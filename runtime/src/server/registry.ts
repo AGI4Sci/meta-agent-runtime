@@ -21,6 +21,12 @@ import { fileEditTool } from "../tools/fileEdit";
 import { fileReadTool } from "../tools/fileRead";
 import { fileWriteTool } from "../tools/fileWrite";
 import { searchTool } from "../tools/search";
+import {
+  createClaudeCodeSourcemapActionParser,
+  createClaudeCodeSourcemapContextStrategy,
+  createClaudeCodeSourcemapPromptBuilder,
+  getClaudeCodeSourcemapToolPreset,
+} from "../../../packages/agents/claude-code-sourcemap/src";
 
 export const PROMPT_BUILDERS: Record<string, () => PromptBuilder> = {
   react: () => new ReActPromptBuilder(),
@@ -28,6 +34,7 @@ export const PROMPT_BUILDERS: Record<string, () => PromptBuilder> = {
   minimal: () => new MinimalPromptBuilder(),
   smolagents: () => new SmolagentsPromptBuilder(),
   swe_agent: () => new SWEAgentPromptBuilder(),
+  claude_code_sourcemap: () => createClaudeCodeSourcemapPromptBuilder(),
 };
 
 export const ACTION_PARSERS: Record<string, () => ActionParser> = {
@@ -35,6 +42,7 @@ export const ACTION_PARSERS: Record<string, () => ActionParser> = {
   xml: () => new XMLActionParser(),
   function_call: () => new FunctionCallActionParser(),
   react: () => new ReActActionParser(),
+  claude_code_sourcemap: () => createClaudeCodeSourcemapActionParser(),
 };
 
 export const CONTEXT_STRATEGIES: Record<
@@ -45,11 +53,13 @@ export const CONTEXT_STRATEGIES: Record<
   sliding_window: ({ max_tokens = 8000 }) => new SlidingWindowStrategy(max_tokens),
   summarization: ({ max_tokens = 8000, llm }) => new SummarizationStrategy(max_tokens, llm!),
   selective: () => new SelectiveRetentionStrategy(),
+  claude_code_sourcemap: () => createClaudeCodeSourcemapContextStrategy(),
 };
 
 export const TOOL_PRESETS: Record<string, ToolSpec[]> = {
   swe: [bashTool, fileReadTool, fileWriteTool, fileEditTool, searchTool],
   minimal: [bashTool],
+  claude_code_sourcemap: getClaudeCodeSourcemapToolPreset(),
 };
 
 export function createLLM(input: {
@@ -66,4 +76,3 @@ export function createLLM(input: {
   }
   return new LocalLLMClient(input.model, input.baseUrl);
 }
-

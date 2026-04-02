@@ -5,13 +5,16 @@
     "moduleResolution": "Node",
     "declaration": true,
     "outDir": "dist",
-    "rootDir": ".",
+    "rootDir": "..",
     "strict": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "../packages/agents/claude-code-sourcemap/src/**/*.ts"
+  ]
 }
-
