@@ -1,0 +1,21 @@
+{
+  "name": "@agi4sci/meta-agent-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/server/app.ts",
+    "start": "node dist/server/app.js",
+    "test": "node --test dist/tests/*.test.js"
+  },
+  "dependencies": {
+    "fastify": "^5.2.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}
