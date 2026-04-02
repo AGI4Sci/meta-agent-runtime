@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { AgentRuntime } from "../core/runtime";
+import { AGENT_REGISTRATIONS } from "./agentRegistry";
 import { CONTEXT_STRATEGIES, ACTION_PARSERS, createLLM, PROMPT_BUILDERS, TOOL_PRESETS } from "./registry";
 import { RunRequestSchema, RunResponseSchema } from "./schema";
 
@@ -10,6 +11,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   }));
 
   app.get("/registry", async () => ({
+    agents: AGENT_REGISTRATIONS.map((registration) => registration.agent),
     prompt_builders: Object.keys(PROMPT_BUILDERS),
     action_parsers: Object.keys(ACTION_PARSERS),
     context_strategies: Object.keys(CONTEXT_STRATEGIES),

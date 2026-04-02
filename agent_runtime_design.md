@@ -256,6 +256,7 @@ class AgentRuntime:
 - 按 `PromptBuilder -> ActionParser -> ContextStrategy -> ToolSpec` 顺序迁移。
 - 各 source agent 应优先迁移到 `packages/agents/<agent-name>/`。
 - agent 适配器应尽量避免直接修改 `runtime/src/core/*`。
+- runtime server 侧的注册整合应优先通过共享 registry helper 完成，避免在 `runtime/src/server/registry.ts` 中堆叠分支式接线冲突。
 
 ## 8. 目录结构
 

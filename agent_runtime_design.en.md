@@ -180,6 +180,7 @@ class AgentRuntime:
 - Migrate in the order `PromptBuilder -> ActionParser -> ContextStrategy -> ToolSpec`.
 - Each source agent should migrate under `packages/agents/<agent-name>/`.
 - Adapter packages should avoid modifying `runtime/src/core/*` directly.
+- Runtime-server wiring should be consolidated through a shared registry helper instead of stacking branch-specific edits inside `runtime/src/server/registry.ts`.
 
 ## 8. Directory Layout
 

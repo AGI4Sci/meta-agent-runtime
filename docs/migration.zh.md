@@ -25,3 +25,13 @@
 - agent-specific 代码不应直接修改 `runtime/src/core/*`。
 - 新能力优先通过接口和 registry 进入平台。
 - 共性工具只在至少两个适配器都需要时再提取为共享模块。
+
+## 当前迁移报告导航
+
+- `claude-code-sourcemap`: `docs/claude-code-sourcemap.migration.zh.md` / `docs/claude-code-sourcemap.migration.en.md`
+- `goose`: `docs/goose_migration_report.zh.md` / `docs/goose_migration_report.en.md`
+- `ii-agent`: `docs/ii-agent-migration-report.zh.md` / `docs/ii-agent-migration-report.en.md`
+- `pi-mono`: `docs/pi-mono-migration.zh.md` / `docs/pi-mono-migration.en.md`
+- `opencode`: `docs/opencode-migration.zh.md` / `docs/opencode-migration.en.md`
+- `cline`: `packages/agents/cline/MIGRATION_REPORT.zh.md` / `packages/agents/cline/MIGRATION_REPORT.en.md`
+- `openhands`: `docs/openhands_migration_status.zh.md` / `docs/openhands_migration_status.en.md`

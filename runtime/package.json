@@ -6,8 +6,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/server/app.ts",
-    "start": "node dist/server/app.js",
-    "test": "node --test dist/tests/*.test.js"
+    "start": "node dist/runtime/src/server/app.js",
+    "test": "node --test dist/runtime/tests/*.test.js"
   },
   "dependencies": {
     "fastify": "^5.2.1",

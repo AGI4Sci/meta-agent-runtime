@@ -57,6 +57,7 @@ python -m agent_runtime_client.demo
 - LLM provider 仍是可扩展 scaffold，后续可按实验需要接入真实实现。
 - runtime prompt、tool description 与实验接口统一使用英文，保证高频路径稳定。
 - 中文主要保留在文档与协作层。
+- 当前已接入的迁移适配器包括 `claude-code-sourcemap`、`goose`、`ii-agent`、`pi-mono`、`opencode`、`cline` 与 `openhands`。
 
 ## 迁移原则
 

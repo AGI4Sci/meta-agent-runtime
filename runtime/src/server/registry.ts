@@ -16,6 +16,12 @@ import { MinimalPromptBuilder } from "../prompt/minimal";
 import { ReActPromptBuilder } from "../prompt/react";
 import { SmolagentsPromptBuilder } from "../prompt/smolagents";
 import { SWEAgentPromptBuilder } from "../prompt/sweAgent";
+import {
+  collectActionParsers,
+  collectContextStrategies,
+  collectPromptBuilders,
+  collectToolPresets,
+} from "./agentRegistry";
 import { bashTool } from "../tools/bash";
 import { fileEditTool } from "../tools/fileEdit";
 import { fileReadTool } from "../tools/fileRead";
@@ -28,6 +34,7 @@ export const PROMPT_BUILDERS: Record<string, () => PromptBuilder> = {
   minimal: () => new MinimalPromptBuilder(),
   smolagents: () => new SmolagentsPromptBuilder(),
   swe_agent: () => new SWEAgentPromptBuilder(),
+  ...collectPromptBuilders(),
 };
 
 export const ACTION_PARSERS: Record<string, () => ActionParser> = {
@@ -35,6 +42,7 @@ export const ACTION_PARSERS: Record<string, () => ActionParser> = {
   xml: () => new XMLActionParser(),
   function_call: () => new FunctionCallActionParser(),
   react: () => new ReActActionParser(),
+  ...collectActionParsers(),
 };
 
 export const CONTEXT_STRATEGIES: Record<
@@ -45,11 +53,13 @@ export const CONTEXT_STRATEGIES: Record<
   sliding_window: ({ max_tokens = 8000 }) => new SlidingWindowStrategy(max_tokens),
   summarization: ({ max_tokens = 8000, llm }) => new SummarizationStrategy(max_tokens, llm!),
   selective: () => new SelectiveRetentionStrategy(),
+  ...collectContextStrategies(),
 };
 
 export const TOOL_PRESETS: Record<string, ToolSpec[]> = {
   swe: [bashTool, fileReadTool, fileWriteTool, fileEditTool, searchTool],
   minimal: [bashTool],
+  ...collectToolPresets(),
 };
 
 export function createLLM(input: {
@@ -66,4 +76,3 @@ export function createLLM(input: {
   }
   return new LocalLLMClient(input.model, input.baseUrl);
 }
-

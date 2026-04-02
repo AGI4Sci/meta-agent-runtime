@@ -57,6 +57,7 @@ python -m agent_runtime_client.demo
 - LLM providers are still scaffolds and can be wired to real implementations later.
 - Runtime prompts, tool descriptions, and experiment-facing interfaces are standardized in English for stability.
 - Chinese is retained primarily in documentation and collaboration workflows.
+- Integrated adapter packages now include `claude-code-sourcemap`, `goose`, `ii-agent`, `pi-mono`, `opencode`, `cline`, and `openhands`.
 
 ## Migration Principles
 

@@ -1,1 +1,1 @@
-export const OPENHANDS_ADAPTER_NAME = "openhands";
+export * from "./adapter";

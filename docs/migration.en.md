@@ -25,3 +25,13 @@ The reference runtime in `runtime/` must stay agent-agnostic. This keeps multipl
 - Agent-specific code should not modify `runtime/src/core/*`.
 - New behaviors should enter the platform through interfaces and registries.
 - Shared utilities should be extracted only after at least two adapters need them.
+
+## Current Migration Report Index
+
+- `claude-code-sourcemap`: `docs/claude-code-sourcemap.migration.zh.md` / `docs/claude-code-sourcemap.migration.en.md`
+- `goose`: `docs/goose_migration_report.zh.md` / `docs/goose_migration_report.en.md`
+- `ii-agent`: `docs/ii-agent-migration-report.zh.md` / `docs/ii-agent-migration-report.en.md`
+- `pi-mono`: `docs/pi-mono-migration.zh.md` / `docs/pi-mono-migration.en.md`
+- `opencode`: `docs/opencode-migration.zh.md` / `docs/opencode-migration.en.md`
+- `cline`: `packages/agents/cline/MIGRATION_REPORT.zh.md` / `packages/agents/cline/MIGRATION_REPORT.en.md`
+- `openhands`: `docs/openhands_migration_status.zh.md` / `docs/openhands_migration_status.en.md`
