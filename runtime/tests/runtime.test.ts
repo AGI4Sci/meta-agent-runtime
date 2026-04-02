@@ -330,6 +330,178 @@ test("tool errors are surfaced back into prompt-visible context", async () => {
   assert.match(seenPrompts[1] ?? "", /ERROR: Tool error: kaboom/);
 });
 
+test("large tool observations are compacted before entering later prompts", async () => {
+  const seenPrompts: string[] = [];
+
+  class LargeOutputLLM implements LLMClient {
+    private calls = 0;
+
+    complete(prompt: string): string {
+      seenPrompts.push(prompt);
+      this.calls += 1;
+      return this.calls === 1
+        ? JSON.stringify({ name: "big", args: {} })
+        : JSON.stringify({ name: "finish", args: { result: "done" } });
+    }
+
+    countTokens(text: string): number {
+      return text.length;
+    }
+  }
+
+  const runtime = new AgentRuntime({
+    llm: new LargeOutputLLM(),
+    tools: [
+      {
+        name: "big",
+        description: "Returns large output",
+        argsSchema: { type: "object", properties: {} },
+        call: () => "x".repeat(10_000),
+        interpreter: (raw) => ({ content: String(raw), error: null, metadata: {} }),
+      },
+    ],
+    promptBuilder: new MinimalPromptBuilder(),
+    actionParser: new StubActionParser(),
+    contextStrategy: new NoopContextStrategy() as ContextStrategy,
+  });
+
+  const result = await runtime.run("compact large output");
+
+  assert.equal(result.success, true);
+  assert.match(seenPrompts[1] ?? "", /\[compacted output:/);
+});
+
+test("runtime suppresses immediately repeated identical actions", async () => {
+  let toolCalls = 0;
+
+  const runtime = new AgentRuntime({
+    llm: new SequenceLLM([
+      '{"name":"search","args":{"query":"sympify"}}',
+      '{"name":"search","args":{"query":"sympify"}}',
+      '{"name":"finish","args":{"result":"done"}}',
+    ]),
+    tools: [
+      {
+        name: "search",
+        description: "Search files",
+        argsSchema: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"],
+        },
+        call: () => {
+          toolCalls += 1;
+          return "match";
+        },
+        interpreter: (raw) => ({ content: String(raw), error: null, metadata: {} }),
+      },
+    ],
+    promptBuilder: new StubPromptBuilder(),
+    actionParser: new StubActionParser(),
+    contextStrategy: new NoopContextStrategy() as ContextStrategy,
+  });
+
+  const result = await runtime.run("avoid repeated search");
+
+  assert.equal(result.success, true);
+  assert.equal(toolCalls, 1);
+  assert.equal(result.steps.length, 2);
+  assert.match(
+    result.steps[1]?.observation.error ?? "",
+    /Repeated action suppressed: 'search'.*file_read on the most relevant matched file.*narrower query.*file_edit/i,
+  );
+});
+
+test("runtime allows similar actions when arguments differ", async () => {
+  let toolCalls = 0;
+
+  const runtime = new AgentRuntime({
+    llm: new SequenceLLM([
+      '{"name":"search","args":{"query":"sympify"}}',
+      '{"name":"search","args":{"query":"converter"}}',
+      '{"name":"finish","args":{"result":"done"}}',
+    ]),
+    tools: [
+      {
+        name: "search",
+        description: "Search files",
+        argsSchema: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"],
+        },
+        call: () => {
+          toolCalls += 1;
+          return "match";
+        },
+        interpreter: (raw) => ({ content: String(raw), error: null, metadata: {} }),
+      },
+    ],
+    promptBuilder: new StubPromptBuilder(),
+    actionParser: new StubActionParser(),
+    contextStrategy: new NoopContextStrategy() as ContextStrategy,
+  });
+
+  const result = await runtime.run("allow varied search");
+
+  assert.equal(result.success, true);
+  assert.equal(toolCalls, 2);
+  assert.equal(result.steps.length, 2);
+  assert.equal(result.steps[1]?.observation.error, null);
+});
+
+test("runtime compacts repeated identical tool observations in later prompts", async () => {
+  const seenPrompts: string[] = [];
+
+  class RepeatedObservationLLM implements LLMClient {
+    private calls = 0;
+
+    complete(prompt: string): string {
+      seenPrompts.push(prompt);
+      this.calls += 1;
+      if (this.calls === 1) {
+        return '{"name":"search","args":{"query":"sympify"}}';
+      }
+      if (this.calls === 2) {
+        return '{"name":"search","args":{"query":"converter"}}';
+      }
+      return '{"name":"finish","args":{"result":"done"}}';
+    }
+
+    countTokens(text: string): number {
+      return text.length;
+    }
+  }
+
+  const runtime = new AgentRuntime({
+    llm: new RepeatedObservationLLM(),
+    tools: [
+      {
+        name: "search",
+        description: "Search files",
+        argsSchema: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"],
+        },
+        call: () => "same result block",
+        interpreter: (raw) => ({ content: String(raw), error: null, metadata: {} }),
+      },
+    ],
+    promptBuilder: new MinimalPromptBuilder(),
+    actionParser: new StubActionParser(),
+    contextStrategy: new NoopContextStrategy() as ContextStrategy,
+  });
+
+  const result = await runtime.run("compact repeated observations");
+
+  assert.equal(result.success, true);
+  assert.match(
+    seenPrompts[2] ?? "",
+    /\[Repeated observation compacted: 'search' returned the same content as an earlier step\./,
+  );
+});
+
 test("observer failures do not break runtime and onRunEnd is called", async () => {
   const calls: string[] = [];
 

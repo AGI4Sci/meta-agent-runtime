@@ -37,6 +37,8 @@ export class AgentRuntime {
   private readonly contextStrategy: ContextStrategy;
   private readonly config: RuntimeConfig;
   private readonly observers: Observer[];
+  private static readonly MAX_CONTEXT_OBSERVATION_CHARS = 4_000;
+  private static readonly REPEATED_ACTION_WINDOW = 2;
 
   constructor(options: AgentRuntimeOptions) {
     this.llm = options.llm;
@@ -116,7 +118,7 @@ export class AgentRuntime {
             }
             action = { name: "__parse_error__", args: {}, rawText };
             observation = safeObservation("", `Parse failed: ${error.message}`);
-            currentContext = this.updateAndTrim(currentContext, rawText, observation);
+            currentContext = this.updateAndTrim(currentContext, action, rawText, observation);
             currentContext = { ...currentContext, step: currentContext.step + 1 };
             const record: StepRecord = {
               step: currentContext.step,
@@ -165,44 +167,53 @@ export class AgentRuntime {
           });
         }
 
-        const tool = this.tools.find((candidate) => candidate.name === action.name);
-        if (!tool) {
-          observation = safeObservation("", `Unknown tool: ${action.name}`);
+        const repeatedActionMessage = this.detectRepeatedAction(records, action);
+        if (repeatedActionMessage) {
+          observation = safeObservation(
+            "",
+            repeatedActionMessage,
+            { repeated_action: true, action_name: action.name },
+          );
         } else {
-          const validationError = validateArgs(action.args, tool.argsSchema);
-          if (validationError) {
-            observation = safeObservation("", `Invalid args: ${validationError}`);
+          const tool = this.tools.find((candidate) => candidate.name === action.name);
+          if (!tool) {
+          observation = safeObservation("", `Unknown tool: ${action.name}`);
           } else {
-            try {
-              const traceEnabled = process.env.RUNTIME_TRACE === "1";
-              const toolStartedAt = Date.now();
-              if (traceEnabled) {
-                console.info(
-                  `[runtime] tool_start step=${currentContext.step + 1} tool=${action.name} args=${JSON.stringify(action.args).slice(0, 400)}`,
+            const validationError = validateArgs(action.args, tool.argsSchema);
+            if (validationError) {
+              observation = safeObservation("", `Invalid args: ${validationError}`);
+            } else {
+              try {
+                const traceEnabled = process.env.RUNTIME_TRACE === "1";
+                const toolStartedAt = Date.now();
+                if (traceEnabled) {
+                  console.info(
+                    `[runtime] tool_start step=${currentContext.step + 1} tool=${action.name} args=${JSON.stringify(action.args).slice(0, 400)}`,
+                  );
+                }
+                const raw = await tool.call(action.args);
+                if (traceEnabled) {
+                  console.info(
+                    `[runtime] tool_end step=${currentContext.step + 1} tool=${action.name} elapsed_ms=${Date.now() - toolStartedAt} raw_preview=${JSON.stringify(String(raw ?? "").slice(0, 400))}`,
+                  );
+                }
+                observation = safeInterpreter(tool.interpreter)(raw);
+              } catch (error) {
+                if (process.env.RUNTIME_TRACE === "1") {
+                  console.info(
+                    `[runtime] tool_error step=${currentContext.step + 1} tool=${action.name} error=${error instanceof Error ? error.message : String(error)}`,
+                  );
+                }
+                observation = safeObservation(
+                  "",
+                  `Tool error: ${error instanceof Error ? error.message : String(error)}`,
                 );
               }
-              const raw = await tool.call(action.args);
-              if (traceEnabled) {
-                console.info(
-                  `[runtime] tool_end step=${currentContext.step + 1} tool=${action.name} elapsed_ms=${Date.now() - toolStartedAt} raw_preview=${JSON.stringify(String(raw ?? "").slice(0, 400))}`,
-                );
-              }
-              observation = safeInterpreter(tool.interpreter)(raw);
-            } catch (error) {
-              if (process.env.RUNTIME_TRACE === "1") {
-                console.info(
-                  `[runtime] tool_error step=${currentContext.step + 1} tool=${action.name} error=${error instanceof Error ? error.message : String(error)}`,
-                );
-              }
-              observation = safeObservation(
-                "",
-                `Tool error: ${error instanceof Error ? error.message : String(error)}`,
-              );
             }
           }
         }
 
-        currentContext = this.updateAndTrim(currentContext, rawText, observation);
+        currentContext = this.updateAndTrim(currentContext, action, rawText, observation);
         currentContext = { ...currentContext, step: currentContext.step + 1 };
 
         const record: StepRecord = {
@@ -239,15 +250,27 @@ export class AgentRuntime {
     return [...tools, FINISH_TOOL];
   }
 
-  private updateAndTrim(context: Context, rawText: string, observation: Observation): Context {
+  private updateAndTrim(
+    context: Context,
+    action: Action,
+    rawText: string,
+    observation: Observation,
+  ): Context {
     const step = context.step + 1;
+    const actionSignature = this.actionSignature(action);
     const newEntries: ContextEntry[] = [
       ...context.entries,
       { role: "assistant", content: rawText, metadata: { step } },
       {
         role: "tool",
-        content: this.observationToContextContent(observation),
-        metadata: { step, error: observation.error },
+        content: this.observationToContextContent(context, action, observation),
+        metadata: {
+          step,
+          error: observation.error,
+          action_name: action.name,
+          action_signature: actionSignature,
+          raw_observation_content: observation.content,
+        },
       },
     ];
     const nextContext: Context = {
@@ -262,14 +285,61 @@ export class AgentRuntime {
     return this.llm.countTokens(task) + entries.reduce((sum, entry) => sum + this.llm.countTokens(entry.content), 0);
   }
 
-  private observationToContextContent(observation: Observation): string {
+  private observationToContextContent(
+    context: Context,
+    action: Action,
+    observation: Observation,
+  ): string {
+    const deduped = this.deduplicateObservationContent(context, action, observation);
+    if (deduped) {
+      return deduped;
+    }
     if (observation.error && observation.content) {
-      return `${observation.content}\n\nERROR: ${observation.error}`;
+      return this.compactContextContent(`${observation.content}\n\nERROR: ${observation.error}`);
     }
     if (observation.error) {
       return `ERROR: ${observation.error}`;
     }
-    return observation.content;
+    return this.compactContextContent(observation.content);
+  }
+
+  private deduplicateObservationContent(
+    context: Context,
+    action: Action,
+    observation: Observation,
+  ): string | null {
+    if (observation.error || !observation.content) {
+      return null;
+    }
+
+    const existing = [...context.entries].reverse().find(
+      (entry) =>
+        entry.role === "tool" &&
+        entry.metadata.action_name === action.name &&
+        typeof entry.metadata.raw_observation_content === "string" &&
+        entry.metadata.raw_observation_content === observation.content,
+    );
+
+    if (!existing) {
+      return null;
+    }
+
+    return `[Repeated observation compacted: '${action.name}' returned the same content as an earlier step. Reuse the prior result instead of repeating this action.]`;
+  }
+
+  private compactContextContent(content: string): string {
+    if (content.length <= AgentRuntime.MAX_CONTEXT_OBSERVATION_CHARS) {
+      return content;
+    }
+
+    const totalChars = content.length;
+    const totalLines = content.split("\n").length;
+    const marker =
+      `\n...[compacted output: ${totalChars} chars, ${totalLines} lines; middle omitted]...\n`;
+    const available = Math.max(0, AgentRuntime.MAX_CONTEXT_OBSERVATION_CHARS - marker.length);
+    const headChars = Math.ceil(available / 2);
+    const tailChars = Math.floor(available / 2);
+    return `${content.slice(0, headChars)}${marker}${content.slice(totalChars - tailChars)}`;
   }
 
   private resolveRunResult(
@@ -312,6 +382,65 @@ export class AgentRuntime {
     }
     return result;
   }
+
+  private detectRepeatedAction(records: StepRecord[], action: Action): string | null {
+    const comparableRecords = records.filter(
+      (record) => !record.action.name.startsWith("__") && record.action.name !== "finish",
+    );
+    const recentRecords = comparableRecords.slice(-AgentRuntime.REPEATED_ACTION_WINDOW);
+    if (recentRecords.length === 0) {
+      return null;
+    }
+
+    const currentSignature = this.actionSignature(action);
+    const duplicateCount = recentRecords.filter(
+      (record) => this.actionSignature(record.action) === currentSignature,
+    ).length;
+
+    if (duplicateCount === 0) {
+      return null;
+    }
+
+    return this.buildRepeatedActionGuidance(action);
+  }
+
+  private actionSignature(action: Action): string {
+    return `${action.name}:${stableStringify(action.args)}`;
+  }
+
+  private buildRepeatedActionGuidance(action: Action): string {
+    const base =
+      `Repeated action suppressed: '${action.name}' with identical arguments was already attempted recently.`;
+
+    if (action.name === "file_read") {
+      const path = typeof action.args.path === "string" ? action.args.path : "the current file";
+      return `${base} You already read ${path}. Do not reread the whole file. Next choose one of: file_edit on that file, a narrower search query for a specific symbol or condition, or read a different nearby test/helper file.`;
+    }
+
+    if (action.name === "search") {
+      const query = typeof action.args.query === "string" ? action.args.query : "the same query";
+      return `${base} You already searched for ${JSON.stringify(query)}. Next choose one of: file_read on the most relevant matched file, a narrower query that names a concrete symbol/call site, or file_edit if you already know the target file.`;
+    }
+
+    if (action.name === "bash") {
+      return `${base} Do not rerun the same shell command. Next choose one of: inspect a specific file, run a narrower command, or edit the likely target file.`;
+    }
+
+    return `${base} Do not repeat the same action again. Choose a different tool or a narrower target.`;
+  }
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 export function terminationCheck(input: {

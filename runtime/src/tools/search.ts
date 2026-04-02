@@ -1,5 +1,14 @@
 import { execFileSync } from "node:child_process";
+import { statSync } from "node:fs";
+import { dirname } from "node:path";
 import { stringTool } from "./common";
+
+class SearchPatternError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SearchPatternError";
+  }
+}
 
 function asText(value: unknown): string {
   if (typeof value === "string") {
@@ -24,6 +33,9 @@ function runSearch(command: string, args: string[], cwd: string, timeout: number
     const err = error as NodeJS.ErrnoException & { stdout?: unknown; stderr?: unknown; status?: number | null };
     const stdout = asText(err.stdout);
     const stderr = asText(err.stderr);
+    if (command === "rg" && /regex parse error/i.test(stderr)) {
+      throw new SearchPatternError(stderr.trim() || "ripgrep regex parse error");
+    }
     if (err.status === 1) {
       return stdout.trim();
     }
@@ -34,6 +46,19 @@ function runSearch(command: string, args: string[], cwd: string, timeout: number
       return stderr.trim();
     }
     throw error;
+  }
+}
+
+function normalizeSearchCwd(value: unknown): string {
+  if (typeof value !== "string" || value.trim() === "") {
+    return process.cwd();
+  }
+
+  try {
+    const stats = statSync(value);
+    return stats.isDirectory() ? value : dirname(value);
+  } catch {
+    return process.cwd();
   }
 }
 
@@ -50,11 +75,18 @@ export const searchTool = stringTool(
   },
   async (args) => {
     const query = String(args.query);
-    const cwd = typeof args.cwd === "string" ? args.cwd : process.cwd();
+    const cwd = normalizeSearchCwd(args.cwd);
     const timeout = 10_000;
     const maxBuffer = 4 * 1024 * 1024;
     try {
-      const regexMatches = runSearch("rg", ["-n", query, "."], cwd, timeout, maxBuffer);
+      let regexMatches = "";
+      try {
+        regexMatches = runSearch("rg", ["-n", query, "."], cwd, timeout, maxBuffer);
+      } catch (error) {
+        if (!(error instanceof SearchPatternError)) {
+          throw error;
+        }
+      }
       if (regexMatches) {
         return regexMatches;
       }
