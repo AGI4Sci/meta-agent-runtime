@@ -21,6 +21,16 @@ import { fileEditTool } from "../tools/fileEdit";
 import { fileReadTool } from "../tools/fileRead";
 import { fileWriteTool } from "../tools/fileWrite";
 import { searchTool } from "../tools/search";
+import {
+  createOpenHandsActionParser,
+  createOpenHandsContextStrategy,
+  createOpenHandsPromptBuilder,
+  createOpenHandsTools,
+  OPENHANDS_ACTION_PARSER,
+  OPENHANDS_CONTEXT_STRATEGY,
+  OPENHANDS_PROMPT_BUILDER,
+  OPENHANDS_TOOL_PRESET,
+} from "../agents/openhands";
 
 export const PROMPT_BUILDERS: Record<string, () => PromptBuilder> = {
   react: () => new ReActPromptBuilder(),
@@ -28,6 +38,7 @@ export const PROMPT_BUILDERS: Record<string, () => PromptBuilder> = {
   minimal: () => new MinimalPromptBuilder(),
   smolagents: () => new SmolagentsPromptBuilder(),
   swe_agent: () => new SWEAgentPromptBuilder(),
+  [OPENHANDS_PROMPT_BUILDER]: () => createOpenHandsPromptBuilder(),
 };
 
 export const ACTION_PARSERS: Record<string, () => ActionParser> = {
@@ -35,6 +46,7 @@ export const ACTION_PARSERS: Record<string, () => ActionParser> = {
   xml: () => new XMLActionParser(),
   function_call: () => new FunctionCallActionParser(),
   react: () => new ReActActionParser(),
+  [OPENHANDS_ACTION_PARSER]: () => createOpenHandsActionParser(),
 };
 
 export const CONTEXT_STRATEGIES: Record<
@@ -45,11 +57,14 @@ export const CONTEXT_STRATEGIES: Record<
   sliding_window: ({ max_tokens = 8000 }) => new SlidingWindowStrategy(max_tokens),
   summarization: ({ max_tokens = 8000, llm }) => new SummarizationStrategy(max_tokens, llm!),
   selective: () => new SelectiveRetentionStrategy(),
+  [OPENHANDS_CONTEXT_STRATEGY]: ({ max_tokens = 8000 }) =>
+    createOpenHandsContextStrategy({ max_tokens }),
 };
 
 export const TOOL_PRESETS: Record<string, ToolSpec[]> = {
   swe: [bashTool, fileReadTool, fileWriteTool, fileEditTool, searchTool],
   minimal: [bashTool],
+  [OPENHANDS_TOOL_PRESET]: createOpenHandsTools(),
 };
 
 export function createLLM(input: {
@@ -66,4 +81,3 @@ export function createLLM(input: {
   }
   return new LocalLLMClient(input.model, input.baseUrl);
 }
-
