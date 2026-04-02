@@ -76,12 +76,19 @@ npm run start
 **验证服务器运行**：
 - 访问 `http://localhost:3282/health` 检查健康状态
 - 默认端口：3282
+- 如果端口冲突，可通过 `RUNTIME_PORT=33282 npm run start` 改用其他端口
+- 一旦修改端口，benchmark 命令也需要同步传入 `--runtime-url http://127.0.0.1:33282`
 
 ### 运行 Benchmark 测试
 
 日常回归建议优先使用仓库内置的小子集清单，而不是直接跑全量 Verified。
 当前仓库内置了 [benchmark/swe_bench_verified/datasets/verified_smoke.txt](../benchmark/swe_bench_verified/datasets/verified_smoke.txt) 作为 smoke 子集。
 如果希望完全使用仓库内的本地样本数据而不依赖 HuggingFace，可改用 [benchmark/swe_bench_verified/datasets/verified_smoke.jsonl](../benchmark/swe_bench_verified/datasets/verified_smoke.jsonl)。
+
+推荐按两阶段顺序运行：
+
+1. 先用 `--dataset-path ... --skip-evaluation` 验证 runtime、agent、LLM 接入是否正常
+2. 再去掉 `--skip-evaluation`，进入官方 SWE-bench harness 评测
 
 #### 基本测试（推荐首次运行）
 
@@ -99,6 +106,7 @@ python3.10 __main__.py \
 ```bash
 cd <repo-root>/benchmark/swe_bench_verified
 
+# 仅验证 agent 生成 patch 的链路，不进入官方评测
 python3.10 __main__.py \
   --dataset-path ./datasets/verified_smoke.jsonl \
   --max-instances 1 \
@@ -141,6 +149,27 @@ python3.10 __main__.py \
 - `--budget-token`：令牌预算限制
 - `--budget-time-ms`：时间预算（毫秒）
 - `--output-dir`：输出目录（默认：`benchmark_runs`）
+- `--skip-evaluation`：只运行 agent 生成预测结果，不调用官方 SWE-bench harness
+
+### 运行阶段说明
+
+当前 benchmark 分为两个阶段：
+
+1. **Run 阶段**
+   - 读取实例数据
+   - 准备 workspace
+   - 调 runtime `/run`
+   - 生成 `predictions.jsonl` 和 `predictions.json`
+
+2. **Evaluation 阶段**
+   - 在未设置 `--skip-evaluation` 时自动执行
+   - 调用官方 `swebench.harness.run_evaluation`
+   - 需要 Docker 正常运行
+   - 需要官方 SWE-bench Verified 数据集元数据可访问
+
+注意：
+- 即使 run 阶段使用 `--dataset-path` 走本地样本，evaluation 阶段仍会按官方 Verified 数据集和 harness 逻辑执行
+- 因此 `--dataset-path` 只解决“生成 patch”阶段对 HuggingFace 下载的依赖，不代表官方评测阶段完全离线
 
 ### 代理配置
 
@@ -182,23 +211,28 @@ benchmark_runs/
 │   ├── selected_instances.json
 │   ├── runtime_registry.json
 │   ├── resolved_run_config.json
+│   ├── summary.json          # benchmark 汇总结果
 │   └── logs/
 │       └── run_evaluation/   # SWE-bench harness 日志
 ```
 
 ### 评估指标
 
-- **通过率 (Pass Rate)**：修复成功的实例比例
-- **精确匹配 (Exact Match)**：diff 完全匹配的比例
-- **部分匹配 (Partial Match)**：部分修复的比例
+- **Resolved**：官方 harness 判定为修复成功的实例数
+- **Unresolved**：官方 harness 判定为未修复的实例数
+- **Empty patch**：agent 没有产出 patch 的实例数
+- **Errors**：运行或评测阶段报错的实例数
 
 ### 查看结果
 
 ```bash
-# 查看评估报告
+# 查看最终汇总
+cat benchmark_runs/*/summary.json
+
+# 查看官方评测报告
 cat benchmark_runs/*/logs/run_evaluation/*/*/report.json
 
-# 查看详细日志
+# 查看 agent 运行日志
 ls benchmark_runs/*/instance_logs/
 ```
 
@@ -234,14 +268,26 @@ ls benchmark_runs/*/instance_logs/
    ```
    EADDRINUSE
    ```
-   **解决**：更改端口或停止其他服务
+   **解决**：更改端口或停止其他服务；例如使用 `RUNTIME_PORT=33282 npm run start`，并在 benchmark 中同步传 `--runtime-url`
+
+6. **Evaluation 阶段失败**
+   ```
+   docker.errors.DockerException
+   ```
+   **解决**：确认 Docker Desktop 已启动，并且 `docker version`、`docker ps` 能正常返回
+
+7. **Harness 元数据下载失败**
+   ```
+   hf-mirror.com / HuggingFace 相关错误
+   ```
+   **解决**：检查 `HF_ENDPOINT` 等环境变量；evaluation 阶段仍会访问官方 Verified 数据集元数据
 
 ### 调试技巧
 
 - 使用 `--max-instances 1` 进行单实例测试
 - 优先配合 `--instance-ids-file ./datasets/verified_smoke.txt` 做仓库内 smoke 回归
 - 若只想验证 runtime 与 agent 流程，可使用 `--dataset-path ./datasets/verified_smoke.jsonl --skip-evaluation`
-- 检查服务器日志：`tail -f /dev/null`（如果服务器在前台运行）
+- 若要查看服务器日志，直接在前台运行 `npm run start`，或将输出重定向到日志文件后再 `tail -f`
 - 查看详细错误：添加 `--verbose` 参数（如果支持）
 
 ## 高级配置

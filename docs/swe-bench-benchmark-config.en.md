@@ -76,12 +76,19 @@ npm run start
 **Verify server is running**:
 - Visit `http://localhost:3282/health` to check health status
 - Default port: 3282
+- If the port is already in use, start on another port such as `RUNTIME_PORT=33282 npm run start`
+- If you override the port, also pass the matching `--runtime-url http://127.0.0.1:33282` to the benchmark command
 
 ### Run Benchmark Tests
 
 For day-to-day regression, prefer the repo-managed small subset instead of running the full Verified split.
 The repository currently includes [benchmark/swe_bench_verified/datasets/verified_smoke.txt](../benchmark/swe_bench_verified/datasets/verified_smoke.txt) as a smoke subset.
 If you want to stay fully inside repo-local sample data without depending on HuggingFace, use [benchmark/swe_bench_verified/datasets/verified_smoke.jsonl](../benchmark/swe_bench_verified/datasets/verified_smoke.jsonl).
+
+Recommended execution order:
+
+1. First run with `--dataset-path ... --skip-evaluation` to validate the runtime, agent, and LLM integration path
+2. Then remove `--skip-evaluation` to enter the official SWE-bench harness evaluation phase
 
 #### Basic Test (Recommended for First Run)
 
@@ -99,6 +106,7 @@ python3.10 __main__.py \
 ```bash
 cd <repo-root>/benchmark/swe_bench_verified
 
+# Validate only the agent-to-prediction path and skip official evaluation
 python3.10 __main__.py \
   --dataset-path ./datasets/verified_smoke.jsonl \
   --max-instances 1 \
@@ -141,6 +149,27 @@ python3.10 __main__.py \
 - `--budget-token`: Token budget limit
 - `--budget-time-ms`: Time budget (milliseconds)
 - `--output-dir`: Output directory (default: `benchmark_runs`)
+- `--skip-evaluation`: Run only the agent/prediction phase and skip the official SWE-bench harness
+
+### Execution Phases
+
+The current benchmark flow has two phases:
+
+1. **Run phase**
+   - Load instance data
+   - Prepare the workspace
+   - Call runtime `/run`
+   - Write `predictions.jsonl` and `predictions.json`
+
+2. **Evaluation phase**
+   - Runs automatically unless `--skip-evaluation` is set
+   - Calls the official `swebench.harness.run_evaluation`
+   - Requires a working Docker daemon
+   - Still requires access to official SWE-bench Verified dataset metadata
+
+Notes:
+- Even if the run phase uses `--dataset-path` with repo-local sample data, the evaluation phase still follows the official Verified dataset and harness logic
+- In other words, `--dataset-path` removes HuggingFace dependency from the patch-generation phase only; it does not make the official evaluation phase fully offline
 
 ### Agent Configuration
 
@@ -183,23 +212,28 @@ benchmark_runs/
 │   ├── selected_instances.json
 │   ├── runtime_registry.json
 │   ├── resolved_run_config.json
+│   ├── summary.json          # Benchmark-level summary
 │   └── logs/
 │       └── run_evaluation/   # SWE-bench harness logs
 ```
 
 ### Evaluation Metrics
 
-- **Pass Rate**: Proportion of successfully fixed instances
-- **Exact Match**: Proportion of perfectly matching diffs
-- **Partial Match**: Proportion of partially fixed instances
+- **Resolved**: Number of instances the official harness marks as fixed
+- **Unresolved**: Number of instances the official harness marks as not fixed
+- **Empty patch**: Number of instances where the agent produced no patch
+- **Errors**: Number of instances that failed during run or evaluation
 
 ### View Results
 
 ```bash
-# View evaluation report
+# View benchmark summary
+cat benchmark_runs/*/summary.json
+
+# View official evaluation report
 cat benchmark_runs/*/logs/run_evaluation/*/*/report.json
 
-# View detailed logs
+# View agent execution logs
 ls benchmark_runs/*/instance_logs/
 ```
 
@@ -235,14 +269,26 @@ ls benchmark_runs/*/instance_logs/
    ```
    EADDRINUSE
    ```
-   **Solution**: Change port or stop other services
+   **Solution**: Change the runtime port or stop other services; for example use `RUNTIME_PORT=33282 npm run start` and pass the matching `--runtime-url`
+
+6. **Evaluation Phase Failure**
+   ```
+   docker.errors.DockerException
+   ```
+   **Solution**: Make sure Docker Desktop is running and both `docker version` and `docker ps` succeed
+
+7. **Harness Metadata Download Failure**
+   ```
+   hf-mirror.com / HuggingFace related errors
+   ```
+   **Solution**: Check `HF_ENDPOINT` and related environment variables; the evaluation phase still fetches official Verified dataset metadata
 
 ### Debugging Tips
 
 - Use `--max-instances 1` for single instance testing
 - Prefer combining it with `--instance-ids-file ./datasets/verified_smoke.txt` for repo-local smoke regression
 - If you only want to validate the runtime and agent execution path, use `--dataset-path ./datasets/verified_smoke.jsonl --skip-evaluation`
-- Check server logs: `tail -f /dev/null` (if server runs in foreground)
+- To inspect server logs, run `npm run start` in the foreground or redirect output to a log file and `tail -f` that file
 - View detailed errors: add `--verbose` flag (if supported)
 
 ## Advanced Configuration
