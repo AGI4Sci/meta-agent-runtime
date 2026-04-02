@@ -8,15 +8,17 @@ export const RunRequestSchema = z.object({
     api_key: z.string().optional(),
     base_url: z.string().optional(),
   }),
-  prompt_builder: z.enum(["react", "cot", "minimal", "smolagents", "swe_agent"]).default("react"),
-  action_parser: z.enum(["json", "xml", "function_call", "react"]).default("json"),
+  prompt_builder: z
+    .enum(["react", "cot", "minimal", "smolagents", "swe_agent", "ii_agent"])
+    .default("react"),
+  action_parser: z.enum(["json", "xml", "function_call", "react", "ii_agent"]).default("json"),
   context_strategy: z
     .object({
-      name: z.enum(["noop", "sliding_window", "summarization", "selective"]),
+      name: z.enum(["noop", "sliding_window", "summarization", "selective", "ii_agent"]),
       max_tokens: z.number().optional(),
     })
     .default({ name: "sliding_window", max_tokens: 8000 }),
-  tools: z.enum(["swe", "minimal", "custom"]).default("swe"),
+  tools: z.enum(["swe", "minimal", "ii_agent", "custom"]).default("swe"),
   config: z
     .object({
       max_steps: z.number().default(50),
