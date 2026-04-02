@@ -1,18 +1,31 @@
-# Agent Runtime 设计文档
+# Agent Runtime 设计文档 / Design Specification
 
-> 本文档是 **reference runtime** 的完整设计规范，供 Codex 生成骨架代码，并作为迁移其他 code agent 的统一模板。
+> 本文档是 **reference runtime** 的完整设计规范，供 Codex 生成骨架代码，并作为迁移其他 code agent 的统一模板。  
+> This document defines the complete specification for the **reference runtime**, serving both as the implementation blueprint for Codex and as the unified template for migrating other code agents.
 >
-> **实现语言**：TypeScript（核心 runtime + HTTP server），Python（评估脚本 + 实验分析 client）。两者通过本地 HTTP 通信，共享 JSON Schema 定义的数据格式。
+> **实现语言**：TypeScript（核心 runtime + HTTP server），Python（评估脚本 + 实验分析 client）。两者通过本地 HTTP 通信，共享 JSON Schema 定义的数据格式。  
+> **Implementation languages**: TypeScript for the core runtime and HTTP server, Python for evaluation scripts and experiment-analysis clients. The two layers communicate over local HTTP and share JSON-Schema-defined data contracts.
+
+## 0. 文档与协作语言 / Documentation and Collaboration Language
+
+- 本项目默认工作语言为中文，英文作为对照与对外协作语言。
+- Chinese is the default working language; English is maintained as a parallel language for external collaboration.
+- 设计文档、README、迁移说明、实验报告建议采用“中文优先，英文对照”的写法。
+- Design docs, README files, migration notes, and experiment reports should follow a "Chinese first, English mirrored" style whenever practical.
+- 若中英文表述存在歧义，团队内部讨论以中文版本为准，再同步修订英文版本。
+- If the Chinese and English versions diverge, internal discussion should resolve the Chinese version first, then update the English mirror accordingly.
+- 代码标识、接口名、目录名保持英文，避免跨语言协作时的实现歧义。
+- Code identifiers, interface names, and directory names remain in English to reduce implementation ambiguity across languages.
 
 ---
 
-## 1. 研究背景与目标
+## 1. 研究背景与目标 / Research Background and Goals
 
-### 1.1 研究动机
+### 1.1 研究动机 / Motivation
 
 现有开源 code agent（smolagents、SWE-agent、OpenHands、LangGraph 等）将 prompt 模板、context 管理、action 解析、工具调用等逻辑混合在一起，无法单独替换某一个成分来做受控实验。本项目的目标是构建一个**消融实验平台**：固定其他所有变量，每次只替换一个模块，精确测量该模块对结果的影响。
 
-### 1.2 研究目标
+### 1.2 研究目标 / Goals
 
 在以下约束下最大化 task success rate：
 
@@ -21,7 +34,7 @@
 - **约束方式**：约束式——在 token/时间 budget X 内最大化 success rate
 - **任务域**：coding agent（SWE-bench Verified）
 
-### 1.3 主要研究变量
+### 1.3 主要研究变量 / Primary Research Variables
 
 | 模块 | 对 success rate 的影响 | 对 token/时间的影响 | 研究优先级 |
 |------|----------------------|-------------------|-----------|
@@ -33,9 +46,9 @@
 
 ---
 
-## 2. 边界定义
+## 2. 边界定义 / Boundary Definition
 
-### 2.1 核心决策清单
+### 2.1 核心决策清单 / Core Design Decisions
 
 以下是经过完整讨论后确立的所有设计决策：
 
@@ -54,7 +67,7 @@
 | prompt 模板 | 可插拔，作为 runtime 初始化参数 |
 | LLM | 外部依赖注入，runtime 定义最小接口 |
 
-### 2.2 边界内 vs 边界外
+### 2.2 边界内 vs 边界外 / In Scope vs Out of Scope
 
 **边界内（runtime 职责）**：
 - 决策：`LLM(context) → action`
@@ -76,7 +89,7 @@
 
 ---
 
-## 3. 数据结构规范
+## 3. 数据结构规范 / Data Model Specification
 
 ### 3.1 `Observation`
 
@@ -175,7 +188,7 @@ class RunResult:
 
 ---
 
-## 4. 五个插拔接口规范
+## 4. 五个插拔接口规范 / Five Pluggable Interfaces
 
 ### 4.1 `LLMClient`
 
@@ -332,9 +345,9 @@ FINISH_TOOL = ToolSpec(
 
 ---
 
-## 5. Runtime 主体规范
+## 5. Runtime 主体规范 / Runtime Core Specification
 
-### 5.1 初始化契约
+### 5.1 初始化契约 / Initialization Contract
 
 ```python
 @dataclass
@@ -358,7 +371,7 @@ class AgentRuntime:
         ...
 ```
 
-### 5.2 公开接口
+### 5.2 公开接口 / Public Interface
 
 ```python
 class AgentRuntime:
@@ -375,7 +388,7 @@ class AgentRuntime:
         ...
 ```
 
-### 5.3 Decision Loop 伪代码
+### 5.3 Decision Loop 伪代码 / Decision Loop Pseudocode
 
 ```
 function run(task):
@@ -454,7 +467,7 @@ function run(task):
             observer.on_step(records[-1])
 ```
 
-### 5.4 `termination_check` 规范
+### 5.4 `termination_check` 规范 / `termination_check` Specification
 
 ```python
 def termination_check(
@@ -477,11 +490,12 @@ def termination_check(
 
 ---
 
-## 6. 观测系统规范
+## 6. 观测系统规范 / Observability Specification
 
 观测系统是实验平台的核心基础设施，不参与控制流，只做数据收集。
+The observability layer is core infrastructure for the research platform. It does not affect control flow and exists only for data collection.
 
-### 6.1 `Observer` 接口
+### 6.1 `Observer` 接口 / `Observer` Interface
 
 ```python
 class Observer(Protocol):
@@ -494,7 +508,7 @@ class Observer(Protocol):
         ...
 ```
 
-### 6.2 内置 Observer 参考实现
+### 6.2 内置 Observer 参考实现 / Built-in Observer References
 
 ```
 TokenBudgetObserver      — 追踪累计 token 消耗，触发 budget 终止
@@ -505,9 +519,9 @@ ReplayBufferObserver     — 将完整 run 序列化，用于复现实验
 
 ---
 
-## 7. 迁移指南
+## 7. 迁移指南 / Migration Guide
 
-### 7.1 迁移一个开源 agent 的步骤
+### 7.1 迁移一个开源 agent 的步骤 / Steps to Migrate an Open-Source Agent
 
 将现有 code agent 迁移到本框架，按以下顺序进行：
 
@@ -535,7 +549,7 @@ ReplayBufferObserver     — 将完整 run 序列化，用于复现实验
 - 用相同的 task 和相同的 LLM，对比原项目和迁移后的 runtime 的 step 序列
 - 重点检查：prompt 格式是否一致、action 解析是否覆盖所有格式、context 裁剪时机是否相同
 
-### 7.2 主要开源 agent 的迁移参考
+### 7.2 主要开源 agent 的迁移参考 / Migration References for Major Agents
 
 #### smolagents (`MultiStepAgent`)
 
@@ -569,7 +583,7 @@ ReplayBufferObserver     — 将完整 run 序列化，用于复现实验
 
 **注意**：OpenHands 是拓扑 B 设计（controller/runtime 分离），迁移时需要将其 controller 逻辑展平为本框架的线性 loop，可能损失部分并发能力。
 
-### 7.3 迁移时的常见问题
+### 7.3 迁移时的常见问题 / Common Migration Questions
 
 **问题 1：原项目的 tool 返回值直接进入 prompt，没有 interpreter 层**
 
@@ -591,7 +605,7 @@ interpreter=lambda raw: Observation(content=str(raw), error=None, metadata={})
 
 ---
 
-## 8. 目录结构
+## 8. 目录结构 / Directory Layout
 
 ```
 agent_runtime/
@@ -677,7 +691,7 @@ agent_runtime/
 
 ---
 
-## 9. 关键设计约束汇总
+## 9. 关键设计约束汇总 / Key Design Constraints
 
 以下约束是 Codex 实现时必须严格遵守的不变量：
 
@@ -694,15 +708,15 @@ agent_runtime/
 
 ---
 
-## 10. HTTP Server 规范（TypeScript 侧）
+## 10. HTTP Server 规范（TypeScript 侧） / HTTP Server Specification (TypeScript)
 
-### 10.1 技术选型
+### 10.1 技术选型 / Technology Choices
 
 - **框架**：Fastify（轻量、类型友好、schema 验证内置）
 - **Schema 验证**：zod（TypeScript 原生，编译期和运行期双重验证）
 - **端口**：默认 `3282`，可通过环境变量 `RUNTIME_PORT` 覆盖
 
-### 10.2 启动方式
+### 10.2 启动方式 / Startup Modes
 
 ```bash
 # 开发模式
@@ -717,7 +731,7 @@ RUNTIME_LOG_LEVEL=info     # 日志级别（debug / info / warn / error）
 RUNTIME_TOOLS_PRESET=swe   # 预设工具集（swe / minimal / custom）
 ```
 
-### 10.3 路由规范
+### 10.3 路由规范 / Route Specification
 
 #### `POST /run`
 
@@ -814,7 +828,7 @@ export type RunResponse = z.infer<typeof RunResponseSchema>;
 }
 ```
 
-### 10.4 模块注册表
+### 10.4 模块注册表 / Module Registry
 
 ```typescript
 // src/server/registry.ts
@@ -854,7 +868,7 @@ export const TOOL_PRESETS: Record<string, ToolSpec[]> = {
 };
 ```
 
-### 10.5 并发处理
+### 10.5 并发处理 / Concurrency Model
 
 每个 `POST /run` 请求创建独立的 `AgentRuntime` 实例，无共享状态。Fastify 默认支持并发请求，无需额外处理。
 
@@ -862,9 +876,9 @@ SWE-bench 评估时建议控制并发数（Python 侧限制），避免 LLM API 
 
 ---
 
-## 11. Python Client 规范
+## 11. Python Client 规范 / Python Client Specification
 
-### 11.1 安装
+### 11.1 安装 / Installation
 
 ```bash
 cd eval && pip install -e .
@@ -926,7 +940,7 @@ class AgentRuntimeClient:
         self.close()
 ```
 
-### 11.3 数据类型（镜像 TypeScript schema）
+### 11.3 数据类型（镜像 TypeScript schema） / Data Types (Mirroring the TypeScript Schema)
 
 ```python
 # eval/agent_runtime_client/types.py
@@ -994,7 +1008,7 @@ class RunResponse:
         return cls(steps=steps, **data)
 ```
 
-### 11.4 典型使用模式
+### 11.4 典型使用模式 / Typical Usage Patterns
 
 #### 单次调用
 
@@ -1100,7 +1114,7 @@ def run_swebench(
             yield task["instance_id"], result
 ```
 
-### 11.5 日志文件读取
+### 11.5 日志文件读取 / Reading Log Files
 
 当需要完整的 step 数据（prompt 原文、LLM raw output）时，读取 TypeScript 侧写入的 JSONL：
 
