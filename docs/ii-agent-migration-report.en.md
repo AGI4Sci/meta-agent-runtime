@@ -6,7 +6,7 @@
 
 Current adapter code lives under:
 
-- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src)
+- `packages/agents/ii-agent/src`
 
 The current state is:
 
@@ -45,7 +45,7 @@ The current state is:
 One additional refinement was made specifically to improve modular experimentation:
 
 - todo-state conventions were extracted into a dedicated helper module:
-  - [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/todoState.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/todoState.ts)
+  - `packages/agents/ii-agent/src/todoState.ts`
 
 This centralizes:
 
@@ -78,7 +78,7 @@ The following parts are still intentionally out of scope for the current adapter
 
 Relevant coverage:
 
-- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/runtime/tests/iiAgentAdapter.test.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/runtime/tests/iiAgentAdapter.test.ts)
+- `runtime/tests/iiAgentAdapter.test.ts`
 
 Covered behaviors include:
 
@@ -94,7 +94,7 @@ Covered behaviors include:
 Commands run:
 
 ```bash
-cd /Applications/workspace/ailab/research/code-agent/meta_agent_runtime/runtime
+cd runtime
 npm run build
 node --test dist/runtime/tests/iiAgentAdapter.test.js
 node --test dist/runtime/tests/serverContract.test.js dist/runtime/tests/runtimeCoreAlignment.test.js
@@ -102,4 +102,4 @@ node --test dist/runtime/tests/serverContract.test.js dist/runtime/tests/runtime
 
 ## Notes
 
-- A separate pre-existing build issue still exists in [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/openhands/src/index.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/openhands/src/index.ts), where `createOpenHandsTools` is exported ambiguously. This is recorded here only as unrelated repository context; it is not part of the `ii-agent` migration itself.
+- A separate pre-existing build issue still exists in `packages/agents/openhands/src/index.ts`, where `createOpenHandsTools` is exported ambiguously. This is recorded here only as unrelated repository context; it is not part of the `ii-agent` migration itself.

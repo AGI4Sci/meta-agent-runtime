@@ -11,7 +11,7 @@ class AgentRuntimeClient:
         base_url: str = "http://localhost:3282",
         timeout: float = 600.0,
     ):
-        self._client = httpx.Client(base_url=base_url, timeout=timeout)
+        self._client = httpx.Client(base_url=base_url, timeout=timeout, trust_env=False)
         self._verify_server()
 
     def _verify_server(self) -> None:

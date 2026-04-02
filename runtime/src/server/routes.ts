@@ -4,9 +4,11 @@ import { ACTION_PARSERS, CONTEXT_STRATEGIES, createLLM, PROMPT_BUILDERS, TOOL_PR
 import {
   HealthResponseSchema,
   RegistryResponseSchema,
-  RunRequestSchema,
+  RunRequestCompatSchema,
   RunResponseSchema,
 } from "./schema";
+import { scopeToolsToWorkspace } from "../tools/workspace";
+import type { Observer } from "../core/interfaces";
 
 export function resolveToolPreset(requestedTools: string): string {
   if (requestedTools !== "custom") {
@@ -44,7 +46,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   );
 
   app.post("/run", async (request, reply) => {
-    const payload = RunRequestSchema.parse(request.body);
+    const payload = RunRequestCompatSchema.parse(request.body);
+    const traceEnabled = process.env.RUNTIME_TRACE === "1";
     const llm = createLLM({
       provider: payload.llm.provider,
       model: payload.llm.model,
@@ -57,7 +60,42 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       max_tokens: payload.context_strategy.max_tokens,
       llm,
     });
-    const tools = TOOL_PRESETS[resolveToolPreset(payload.tools)];
+    const tools = scopeToolsToWorkspace(
+      TOOL_PRESETS[resolveToolPreset(payload.tools)],
+      payload.config.workspace_root,
+    );
+    const observers: Observer[] = traceEnabled
+      ? [
+          {
+            onStep(record) {
+              request.log.info(
+                {
+                  step: record.step,
+                  action_name: record.action.name,
+                  elapsed_ms: record.elapsedMs,
+                  token_in: record.tokenIn,
+                  token_out: record.tokenOut,
+                  observation_error: record.observation.error,
+                },
+                "agent step completed",
+              );
+            },
+            onRunEnd(result) {
+              request.log.info(
+                {
+                  termination_reason: result.terminationReason,
+                  success: result.success,
+                  steps: result.steps.length,
+                  total_elapsed_ms: result.totalElapsedMs,
+                  total_token_in: result.totalTokenIn,
+                  total_token_out: result.totalTokenOut,
+                },
+                "agent run completed",
+              );
+            },
+          },
+        ]
+      : [];
 
     const runtime = new AgentRuntime({
       llm,
@@ -65,11 +103,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       promptBuilder,
       actionParser,
       contextStrategy,
+      observers,
       config: {
         maxSteps: payload.config.max_steps,
         maxTokens: payload.config.max_tokens,
         budgetToken: payload.config.budget_token,
         budgetTimeMs: payload.config.budget_time_ms,
+        workspaceRoot: payload.config.workspace_root,
       },
     });
 

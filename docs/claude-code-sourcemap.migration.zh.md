@@ -10,12 +10,12 @@
 
 ### 2.1 目标仓库
 
-- 当前目标仓库：`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime`
+- 当前目标仓库：`meta-agent-runtime`
 - 当前工作分支：以实际本地工作分支为准
 
 ### 2.2 参考源仓库
 
-- 参考源仓库：`/Applications/workspace/ailab/research/code-agent/claude-code-sourcemap`
+- 参考源仓库：`claude-code-sourcemap`
 
 ### 2.3 本次迁移目标
 

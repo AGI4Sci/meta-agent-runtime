@@ -10,6 +10,8 @@ A reference platform for code-agent ablation studies and runtime research.
 - English design doc: [agent_runtime_design.en.md](./agent_runtime_design.en.md)
 - Chinese migration notes: [docs/migration.zh.md](./docs/migration.zh.md)
 - English migration notes: [docs/migration.en.md](./docs/migration.en.md)
+- Chinese SWE-bench config guide: [docs/swe-bench-benchmark-config.zh.md](./docs/swe-bench-benchmark-config.zh.md)
+- English SWE-bench config guide: [docs/swe-bench-benchmark-config.en.md](./docs/swe-bench-benchmark-config.en.md)
 
 ## Documentation and Collaboration Language
 

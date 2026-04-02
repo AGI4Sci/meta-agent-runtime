@@ -58,10 +58,10 @@ export interface RuntimeConfig {
   maxTokens: number;
   budgetToken?: number;
   budgetTimeMs?: number;
+  workspaceRoot?: string;
 }
 
 export const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
   maxSteps: 50,
   maxTokens: 100_000,
 };
-

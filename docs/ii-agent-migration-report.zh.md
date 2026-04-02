@@ -4,7 +4,7 @@
 
 `ii-agent` 已经完成从“最小可跑骨架”到“研究友好的兼容 adapter”的第一轮收敛，当前代码位于：
 
-- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src)
+- `packages/agents/ii-agent/src`
 
 当前状态可以概括为：
 
@@ -12,7 +12,7 @@
 
 ## 2. 迁移目标与边界
 
-本次迁移以 [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/agent_runtime_design_raw.md`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/agent_runtime_design_raw.md) 为设计边界，以源仓库 [`/Applications/workspace/ailab/research/code-agent/ii-agent`](/Applications/workspace/ailab/research/code-agent/ii-agent) 为行为参考，目标是：
+本次迁移以 `agent_runtime_design_raw.md` 为设计边界，以源仓库 `ii-agent` 为行为参考，目标是：
 
 - 将 `ii-agent` 的最小运行单元抽取到 shared runtime
 - 保持 `runtime/` agent-agnostic
@@ -32,20 +32,20 @@
 
 ### 3.1 重点查看过的文件
 
-- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/agents/function_call.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/agents/function_call.py)
-- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/controller/agent_controller.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/controller/agent_controller.py)
-- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/controller/state.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/controller/state.py)
-- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/llm/context_manager/llm_compact.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/llm/context_manager/llm_compact.py)
-- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/prompts/agent_prompts.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/prompts/agent_prompts.py)
-- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/prompts/system_prompt.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/prompts/system_prompt.py)
-- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/base.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/base.py)
-- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/shell/shell_run_command.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/shell/shell_run_command.py)
-- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/file_system/file_read_tool.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/file_system/file_read_tool.py)
-- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/file_system/file_write_tool.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/file_system/file_write_tool.py)
-- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/file_system/file_edit_tool.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/file_system/file_edit_tool.py)
-- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/file_system/grep_tool.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/file_system/grep_tool.py)
-- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/productivity/todo_write_tool.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/productivity/todo_write_tool.py)
-- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/productivity/todo_read_tool.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/productivity/todo_read_tool.py)
+- `ii-agent/src/ii_agent/agents/function_call.py`
+- `ii-agent/src/ii_agent/controller/agent_controller.py`
+- `ii-agent/src/ii_agent/controller/state.py`
+- `ii-agent/src/ii_agent/llm/context_manager/llm_compact.py`
+- `ii-agent/src/ii_agent/prompts/agent_prompts.py`
+- `ii-agent/src/ii_agent/prompts/system_prompt.py`
+- `ii-agent/src/ii_tool/tools/base.py`
+- `ii-agent/src/ii_tool/tools/shell/shell_run_command.py`
+- `ii-agent/src/ii_tool/tools/file_system/file_read_tool.py`
+- `ii-agent/src/ii_tool/tools/file_system/file_write_tool.py`
+- `ii-agent/src/ii_tool/tools/file_system/file_edit_tool.py`
+- `ii-agent/src/ii_tool/tools/file_system/grep_tool.py`
+- `ii-agent/src/ii_tool/tools/productivity/todo_write_tool.py`
+- `ii-agent/src/ii_tool/tools/productivity/todo_read_tool.py`
 
 ### 3.2 从源仓库识别出的关键行为
 
@@ -68,7 +68,7 @@
 
 ### 4.1 Adapter 入口
 
-- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/index.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/index.ts)
+- `packages/agents/ii-agent/src/index.ts`
 
 导出：
 
@@ -81,8 +81,8 @@
 
 ### 4.2 PromptBuilder
 
-- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/promptBuilder.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/promptBuilder.ts)
-- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/constants.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/constants.ts)
+- `packages/agents/ii-agent/src/promptBuilder.ts`
+- `packages/agents/ii-agent/src/constants.ts`
 
 当前已实现：
 
@@ -98,7 +98,7 @@
 
 ### 4.3 ActionParser
 
-- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/actionParser.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/actionParser.ts)
+- `packages/agents/ii-agent/src/actionParser.ts`
 
 当前支持：
 
@@ -113,7 +113,7 @@
 
 ### 4.4 ContextStrategy
 
-- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/contextStrategy.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/contextStrategy.ts)
+- `packages/agents/ii-agent/src/contextStrategy.ts`
 
 当前不是简单的 sliding window，而是：
 
@@ -126,7 +126,7 @@
 
 ### 4.5 ToolSpec 映射
 
-- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/toolPreset.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/toolPreset.ts)
+- `packages/agents/ii-agent/src/toolPreset.ts`
 
 当前 tool preset 不再只是 runtime 工具的重命名别名，而是显式构造了更接近原始 `ii-agent` 的工具面：
 
@@ -147,7 +147,7 @@
 
 ### 4.6 Todo 协议模块
 
-- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/todoState.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/todoState.ts)
+- `packages/agents/ii-agent/src/todoState.ts`
 
 这是后续为“研究友好性”新增的收敛模块，用来避免 todo 协议散落在多个文件里。当前收口了：
 
@@ -162,7 +162,7 @@
 
 ### 4.7 Runtime registry 接入
 
-- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/runtime/src/server/agentRegistry.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/runtime/src/server/agentRegistry.ts)
+- `runtime/src/server/agentRegistry.ts`
 
 当前接入方式：
 
@@ -297,7 +297,7 @@
 
 ### 9.1 相关测试文件
 
-- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/runtime/tests/iiAgentAdapter.test.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/runtime/tests/iiAgentAdapter.test.ts)
+- `runtime/tests/iiAgentAdapter.test.ts`
 
 当前覆盖：
 
@@ -315,7 +315,7 @@
 执行过：
 
 ```bash
-cd /Applications/workspace/ailab/research/code-agent/meta_agent_runtime/runtime
+cd runtime
 npm run build
 node --test dist/runtime/tests/iiAgentAdapter.test.js
 node --test dist/runtime/tests/serverContract.test.js dist/runtime/tests/runtimeCoreAlignment.test.js
@@ -330,7 +330,7 @@ node --test dist/runtime/tests/serverContract.test.js dist/runtime/tests/runtime
 
 补充说明：
 
-- 在继续整理文档时，`npx tsc -p tsconfig.json --pretty false` 还暴露了一个与 `ii-agent` 无关的既有 build 问题：[`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/openhands/src/index.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/openhands/src/index.ts) 重复导出 `createOpenHandsTools`。这不是 `ii-agent` 迁移本身造成的漂移，因此本报告只记录，不在此处修复。
+- 在继续整理文档时，`npx tsc -p tsconfig.json --pretty false` 还暴露了一个与 `ii-agent` 无关的既有 build 问题：`packages/agents/openhands/src/index.ts` 重复导出 `createOpenHandsTools`。这不是 `ii-agent` 迁移本身造成的漂移，因此本报告只记录，不在此处修复。
 
 ## 10. 当前结论
 

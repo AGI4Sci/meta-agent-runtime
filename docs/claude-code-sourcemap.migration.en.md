@@ -10,12 +10,12 @@ It now reflects the state after both the initial minimal adapter landing and a f
 
 ### 2.1 Target repository
 
-- Current target repository: `/Applications/workspace/ailab/research/code-agent/meta_agent_runtime`
+- Current target repository: `meta-agent-runtime`
 - Working branch: use the current local branch state
 
 ### 2.2 Source repository
 
-- Source repository: `/Applications/workspace/ailab/research/code-agent/claude-code-sourcemap`
+- Source repository: `claude-code-sourcemap`
 
 ### 2.3 Migration goals for this iteration
 

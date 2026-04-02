@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=60", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meta-agent-runtime-benchmark"
+version = "0.1.0"
+description = "SWE-bench Verified evaluation pipeline for Meta Agent Runtime"
+requires-python = ">=3.10"
+dependencies = [
+    "datasets>=2.0",
+    "tqdm>=4.0"
+    # Note: Install the eval client as an editable package when working from source:
+    # pip install -e ../../eval
+]
+
+# This benchmark package is typically run as a script entry rooted at the
+# repository checkout, for example:
+#   cd <repo-root>/benchmark/swe_bench_verified
+#   python __main__.py [options]
+
+[tool.setuptools.packages.find]
+include = ["*"]

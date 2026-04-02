@@ -4,10 +4,10 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Literal, Optional, TypedDict
 
 
-PromptBuilderName = Literal["react", "cot", "minimal", "smolagents", "swe_agent"]
-ActionParserName = Literal["json", "xml", "function_call", "react"]
-ContextStrategyName = Literal["noop", "sliding_window", "summarization", "selective"]
-ToolPresetName = Literal["swe", "minimal", "custom"]
+PromptBuilderName = str
+ActionParserName = str
+ContextStrategyName = str
+ToolPresetName = str
 TerminationReason = Literal["finish", "max_steps", "max_tokens", "budget_token", "budget_time", "error"]
 
 
@@ -38,6 +38,7 @@ class RuntimeConfig:
     max_tokens: int = 100_000
     budget_token: Optional[int] = None
     budget_time_ms: Optional[int] = None
+    workspace_root: Optional[str] = None
 
 
 @dataclass
@@ -51,7 +52,19 @@ class RunRequest:
     config: RuntimeConfig = field(default_factory=RuntimeConfig)
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        return _drop_none(asdict(self))
+
+
+def _drop_none(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _drop_none(item)
+            for key, item in value.items()
+            if item is not None
+        }
+    if isinstance(value, list):
+        return [_drop_none(item) for item in value]
+    return value
 
 
 @dataclass

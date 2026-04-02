@@ -5,5 +5,12 @@ __pycache__/
 .pytest_cache/
 *.pyc
 *.pyo
-*.jsonl
 .DS_Store
+*.egg-info/
+
+# Benchmark runtime artifacts
+benchmark/swe_bench_verified/benchmark_runs/
+benchmark/swe_bench_verified/workspace_cache/
+
+# Vendored and benchmark Python install/test artifacts
+benchmark/**/*.egg-info/

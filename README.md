@@ -10,6 +10,8 @@
 - English design doc: [agent_runtime_design.en.md](./agent_runtime_design.en.md)
 - 中文迁移说明：[docs/migration.zh.md](./docs/migration.zh.md)
 - English migration notes: [docs/migration.en.md](./docs/migration.en.md)
+- 中文 SWE-bench 配置指南：[docs/swe-bench-benchmark-config.zh.md](./docs/swe-bench-benchmark-config.zh.md)
+- English SWE-bench config guide: [docs/swe-bench-benchmark-config.en.md](./docs/swe-bench-benchmark-config.en.md)
 
 ## 文档与协作语言
 

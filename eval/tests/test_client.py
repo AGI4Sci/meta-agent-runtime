@@ -42,6 +42,22 @@ class AgentRuntimeClientTests(unittest.TestCase):
         request = RunRequest(task="x", llm=LLMConfig(provider="local", model="demo"), tools="custom")
         self.assertEqual(request.tools, "custom")
 
+    def test_request_supports_adapter_specific_registry_values(self) -> None:
+        request = RunRequest(
+            task="x",
+            llm=LLMConfig(provider="local", model="demo"),
+            prompt_builder="ii_agent",
+            action_parser="ii_agent",
+            context_strategy=ContextStrategyConfig(name="ii_agent", max_tokens=4096),
+            tools="ii_agent",
+        )
+
+        payload = request.to_dict()
+        self.assertEqual(payload["prompt_builder"], "ii_agent")
+        self.assertEqual(payload["action_parser"], "ii_agent")
+        self.assertEqual(payload["context_strategy"]["name"], "ii_agent")
+        self.assertEqual(payload["tools"], "ii_agent")
+
     def test_run_response_from_dict_parses_steps(self) -> None:
         response = RunResponse.from_dict(
             {
@@ -256,6 +272,7 @@ class AgentRuntimeClientTests(unittest.TestCase):
                 return None
 
             def run(self, request: RunRequest) -> RunResponse:
+                self.last_request = request
                 return RunResponse(
                     success=True,
                     result=request.task,
@@ -273,6 +290,49 @@ class AgentRuntimeClientTests(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0][0], "swe-1")
         self.assertEqual(results[0][1].termination_reason, "finish")
+
+    def test_run_swebench_uses_benchmark_aligned_defaults(self) -> None:
+        class FakeDataset:
+            def __iter__(self):
+                return iter([{"instance_id": "swe-1", "problem_statement": "repair bug"}])
+
+            def select(self, indices):
+                items = list(self)
+                return items[: len(list(indices))]
+
+        captured: dict[str, object] = {}
+
+        class StubClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def run(self, request: RunRequest) -> RunResponse:
+                captured["request"] = request
+                return RunResponse(
+                    success=True,
+                    result=request.task,
+                    termination_reason="finish",
+                    steps=[],
+                    total_token_in=1,
+                    total_token_out=1,
+                    total_elapsed_ms=1,
+                )
+
+        with patch("experiments.swebench_runner.load_swebench_dataset", return_value=FakeDataset()):
+            with patch("experiments.swebench_runner.AgentRuntimeClient", StubClient):
+                list(run_swebench(max_tasks=1))
+
+        request = captured["request"]
+        self.assertEqual(request.prompt_builder, "swe_agent")
+        self.assertEqual(request.action_parser, "json")
+        self.assertEqual(request.context_strategy.name, "sliding_window")
+        self.assertEqual(request.tools, "swe")
 
 
 if __name__ == "__main__":

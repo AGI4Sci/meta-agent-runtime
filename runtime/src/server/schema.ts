@@ -63,6 +63,7 @@ export const RunRequestSchema = z.object({
       max_tokens: z.number().default(100000),
       budget_token: z.number().optional(),
       budget_time_ms: z.number().optional(),
+      workspace_root: z.string().optional(),
     })
     .default({}),
 });
@@ -96,6 +97,7 @@ export const RunRequestCompatSchema = z.object({
       max_tokens: z.number().default(100000),
       budget_token: z.number().optional(),
       budget_time_ms: z.number().optional(),
+      workspace_root: z.string().optional(),
     })
     .default({}),
 });

@@ -58,6 +58,27 @@ export class AgentRuntime {
 
     try {
       while (true) {
+        const preActionDone = terminationCheck({
+          context: currentContext,
+          action: { name: "__continue__", args: {}, rawText: "" },
+          config: this.config,
+          totalTokenIn,
+          totalTokenOut,
+          totalElapsedMs: Date.now() - runStartedAt,
+        });
+
+        if (preActionDone) {
+          return this.finalize({
+            success: preActionDone === "finish",
+            result: records.at(-1)?.observation.content ?? "",
+            steps: records,
+            totalTokenIn,
+            totalTokenOut,
+            totalElapsedMs: Date.now() - runStartedAt,
+            terminationReason: preActionDone,
+          });
+        }
+
         const prompt = this.promptBuilder.build(task, this.tools, currentContext);
         const startedAt = Date.now();
         let rawText: string;
@@ -88,6 +109,11 @@ export class AgentRuntime {
           action = this.actionParser.parse(rawText);
         } catch (error) {
           if (error instanceof ParseError) {
+            if (process.env.RUNTIME_TRACE === "1") {
+              console.info(
+                `[runtime] parse_error step=${currentContext.step + 1} message=${error.message} raw_preview=${JSON.stringify(rawText.slice(0, 400))}`,
+              );
+            }
             action = { name: "__parse_error__", args: {}, rawText };
             observation = safeObservation("", `Parse failed: ${error.message}`);
             currentContext = this.updateAndTrim(currentContext, rawText, observation);
@@ -148,9 +174,26 @@ export class AgentRuntime {
             observation = safeObservation("", `Invalid args: ${validationError}`);
           } else {
             try {
+              const traceEnabled = process.env.RUNTIME_TRACE === "1";
+              const toolStartedAt = Date.now();
+              if (traceEnabled) {
+                console.info(
+                  `[runtime] tool_start step=${currentContext.step + 1} tool=${action.name} args=${JSON.stringify(action.args).slice(0, 400)}`,
+                );
+              }
               const raw = await tool.call(action.args);
+              if (traceEnabled) {
+                console.info(
+                  `[runtime] tool_end step=${currentContext.step + 1} tool=${action.name} elapsed_ms=${Date.now() - toolStartedAt} raw_preview=${JSON.stringify(String(raw ?? "").slice(0, 400))}`,
+                );
+              }
               observation = safeInterpreter(tool.interpreter)(raw);
             } catch (error) {
+              if (process.env.RUNTIME_TRACE === "1") {
+                console.info(
+                  `[runtime] tool_error step=${currentContext.step + 1} tool=${action.name} error=${error instanceof Error ? error.message : String(error)}`,
+                );
+              }
               observation = safeObservation(
                 "",
                 `Tool error: ${error instanceof Error ? error.message : String(error)}`,

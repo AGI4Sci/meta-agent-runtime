@@ -3,8 +3,8 @@
 This document records the current migration status of `opencode` into the shared `meta-agent-runtime` framework.
 
 - Migration date: 2026-04-02
-- Target repository: `/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-opencode`
-- Source repository: `/Applications/workspace/ailab/research/code-agent/opencode`
+- Target repository: `meta-agent-runtime`
+- Source repository: `opencode`
 - Working branch: `codex/migrate-opencode`
 - Scope of this pass: prioritize a minimal runnable skeleton, not a full behavior match
 

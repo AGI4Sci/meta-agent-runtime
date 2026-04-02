@@ -13,6 +13,7 @@ import {
   PUBLIC_PROMPT_BUILDERS,
   PUBLIC_TOOL_PRESETS,
   RegistryResponseSchema,
+  RunRequestCompatSchema,
   RunRequestSchema,
 } from "../src/server/schema";
 
@@ -83,6 +84,28 @@ test("run request schema rejects agent-specific values outside the raw contract"
   );
 });
 
+test("compat run request schema accepts registered adapter-specific values", () => {
+  const parsed = RunRequestCompatSchema.parse({
+    task: "demo",
+    llm: {
+      provider: "local",
+      model: "mock",
+    },
+    prompt_builder: "ii_agent",
+    action_parser: "ii_agent",
+    context_strategy: {
+      name: "ii_agent",
+      max_tokens: 4096,
+    },
+    tools: "ii_agent",
+  });
+
+  assert.equal(parsed.prompt_builder, "ii_agent");
+  assert.equal(parsed.action_parser, "ii_agent");
+  assert.equal(parsed.context_strategy.name, "ii_agent");
+  assert.equal(parsed.tools, "ii_agent");
+});
+
 test("registry route exposes original contract keys without internal helper fields", async () => {
   const app = await buildApp();
 
@@ -138,6 +161,37 @@ test("run route accepts the raw-design request shape", async () => {
           provider: "local",
           model: "mock",
         },
+        config: {
+          max_steps: 0,
+        },
+      },
+    });
+
+    assert.equal(response.statusCode, 200);
+  } finally {
+    await app.close();
+  }
+});
+
+test("run route accepts registered adapter-specific request values", async () => {
+  const app = await buildApp();
+
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: "/run",
+      payload: {
+        task: "demo",
+        llm: {
+          provider: "local",
+          model: "mock",
+        },
+        prompt_builder: "ii_agent",
+        action_parser: "ii_agent",
+        context_strategy: {
+          name: "ii_agent",
+        },
+        tools: "ii_agent",
         config: {
           max_steps: 0,
         },

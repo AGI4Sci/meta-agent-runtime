@@ -4,8 +4,8 @@
 
 - 首轮迁移日期：2026-04-02
 - 最近更新：2026-04-02
-- 目标仓库：`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime`
-- 参考源仓库：`/Applications/workspace/ailab/research/code-agent/opencode`
+- 目标仓库：`meta-agent-runtime`
+- 参考源仓库：`opencode`
 - 本轮目标：在最小可运行骨架基础上，检查并修正相对 raw 设计和原始 `opencode` 算法的明显偏移，同时把适配器整理为更利于模块化研究的形态
 
 ## 1. 本轮遵循的约束

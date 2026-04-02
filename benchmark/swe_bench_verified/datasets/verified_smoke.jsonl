@@ -1,0 +1,2 @@
+{"instance_id":"sympy__sympy-20590","repo":"sympy/sympy","base_commit":"cffd4e0f86fefd4802349a9f9b19ed70934ea354","problem_statement":"sympify should tolerate AttributeError raised while consulting converter hooks for unsupported inputs."}
+{"instance_id":"astropy__astropy-14539","repo":"astropy/astropy","base_commit":"c0a24c1dc957a3b565294213f435fefb2ec99714","problem_statement":"A regression causes masked table operations to mishandle column metadata in a specific update path."}
