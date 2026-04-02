@@ -58,6 +58,14 @@ python -m agent_runtime_client.demo
 - Runtime prompts, tool descriptions, and experiment-facing interfaces are standardized in English for stability.
 - Chinese is retained primarily in documentation and collaboration workflows.
 - Integrated adapter packages now include `claude-code-sourcemap`, `goose`, `ii-agent`, `pi-mono`, `opencode`, `cline`, and `openhands`.
+- `agent_runtime_design.md` has been restored against `agent_runtime_design_raw.md` as the authoritative raw design reference.
+- The runtime core, HTTP server contract, and Python client/eval layer are being realigned with the original design, with dedicated regression coverage now in the repository.
+
+## Latest Progress
+
+- Added runtime-core alignment tests and server contract tests.
+- Realigned the public `/run`, `/health`, and `/registry` contracts to the original design baseline while keeping internal adapter extensibility.
+- Brought the Python client, type definitions, ablation script, and SWE runner skeleton closer to the original design contract.
 
 ## Migration Principles
 

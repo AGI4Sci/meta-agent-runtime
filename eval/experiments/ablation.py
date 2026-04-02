@@ -1,10 +1,32 @@
+from __future__ import annotations
+
 import itertools
 import json
 from pathlib import Path
+from typing import Any, Iterable
 
-from agent_runtime_client import AgentRuntimeClient, ContextStrategyConfig, LLMConfig, RunRequest, RuntimeConfig
+try:
+    from agent_runtime_client import (
+        AgentRuntimeClient,
+        ContextStrategyConfig,
+        LLMConfig,
+        RunRequest,
+        RuntimeConfig,
+    )
+except ModuleNotFoundError:  # pragma: no cover - script entry fallback
+    import sys
 
-TASKS = []
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from agent_runtime_client import (
+        AgentRuntimeClient,
+        ContextStrategyConfig,
+        LLMConfig,
+        RunRequest,
+        RuntimeConfig,
+    )
+
+TASKS: list[dict[str, Any]] = []
+
 PROMPT_BUILDERS = ["react", "cot", "minimal"]
 CONTEXT_STRATEGIES = [
     ContextStrategyConfig(name="noop"),
@@ -13,37 +35,51 @@ CONTEXT_STRATEGIES = [
     ContextStrategyConfig(name="selective"),
 ]
 
-
-def run_ablation(output_dir: Path) -> None:
+def run_ablation(
+    output_dir: Path,
+    tasks: Iterable[dict[str, Any]] | None = None,
+    model: str = "claude-opus-4-5",
+    provider: str = "anthropic",
+    budget_token: int = 50_000,
+) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
+    task_list = list(TASKS if tasks is None else tasks)
 
     with AgentRuntimeClient() as client:
         for prompt_builder, context_strategy in itertools.product(PROMPT_BUILDERS, CONTEXT_STRATEGIES):
-            experiment_id = f"{prompt_builder}__{context_strategy.name}_{context_strategy.max_tokens}"
-            results = []
+            max_tokens = context_strategy.max_tokens if context_strategy.max_tokens is not None else "none"
+            experiment_id = f"{prompt_builder}__{context_strategy.name}_{max_tokens}"
+            results: list[dict[str, Any]] = []
 
-            for task in TASKS:
-                response = client.run(
+            for task in task_list:
+                resp = client.run(
                     RunRequest(
                         task=task["problem_statement"],
-                        llm=LLMConfig(provider="anthropic", model="claude-opus-4-5"),
+                        llm=LLMConfig(provider=provider, model=model),
                         prompt_builder=prompt_builder,
                         context_strategy=context_strategy,
-                        config=RuntimeConfig(budget_token=50_000),
+                        config=RuntimeConfig(budget_token=budget_token),
                     )
                 )
                 results.append(
                     {
                         "task_id": task["instance_id"],
-                        "success": response.success,
-                        "termination_reason": response.termination_reason,
-                        "total_token_in": response.total_token_in,
-                        "total_token_out": response.total_token_out,
-                        "total_elapsed_ms": response.total_elapsed_ms,
+                        "success": resp.success,
+                        "termination_reason": resp.termination_reason,
+                        "total_token_in": resp.total_token_in,
+                        "total_token_out": resp.total_token_out,
+                        "total_elapsed_ms": resp.total_elapsed_ms,
                     }
                 )
 
             out_file = output_dir / f"{experiment_id}.jsonl"
             with out_file.open("w", encoding="utf-8") as handle:
-                for item in results:
-                    handle.write(json.dumps(item) + "\n")
+                for result in results:
+                    handle.write(json.dumps(result, ensure_ascii=False) + "\n")
+
+            if results:
+                success_rate = sum(result["success"] for result in results) / len(results)
+                avg_tokens = sum(result["total_token_in"] + result["total_token_out"] for result in results) / len(results)
+                print(f"{experiment_id}: success={success_rate:.2%}, avg_tokens={avg_tokens:.0f}")
+            else:
+                print(f"{experiment_id}: no tasks")

@@ -21,4 +21,6 @@ export interface ContextStrategy {
 export interface Observer {
   onStep(record: StepRecord): void;
   onRunEnd(result: RunResult): void;
+  on_step?(record: StepRecord): void;
+  on_run_end?(result: RunResult): void;
 }

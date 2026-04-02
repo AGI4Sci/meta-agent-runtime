@@ -1,22 +1,47 @@
 import type { FastifyInstance } from "fastify";
 import { AgentRuntime } from "../core/runtime";
-import { AGENT_REGISTRATIONS } from "./agentRegistry";
-import { CONTEXT_STRATEGIES, ACTION_PARSERS, createLLM, PROMPT_BUILDERS, TOOL_PRESETS } from "./registry";
-import { RunRequestSchema, RunResponseSchema } from "./schema";
+import { ACTION_PARSERS, CONTEXT_STRATEGIES, createLLM, PROMPT_BUILDERS, TOOL_PRESETS } from "./registry";
+import {
+  HealthResponseSchema,
+  RegistryResponseSchema,
+  RunRequestSchema,
+  RunResponseSchema,
+} from "./schema";
+
+export function resolveToolPreset(requestedTools: string): string {
+  if (requestedTools !== "custom") {
+    if (!(requestedTools in TOOL_PRESETS)) {
+      throw new Error(`Unknown tool preset: ${requestedTools}`);
+    }
+    return requestedTools;
+  }
+
+  const presetName = process.env.RUNTIME_TOOLS_PRESET;
+  if (!presetName) {
+    throw new Error('RUNTIME_TOOLS_PRESET must be set when tools="custom"');
+  }
+  if (!(presetName in TOOL_PRESETS)) {
+    throw new Error(`RUNTIME_TOOLS_PRESET must reference a registered tool preset, got: ${presetName}`);
+  }
+  return presetName;
+}
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/health", async () => ({
-    status: "ok",
-    version: "0.1.0",
-  }));
+  app.get("/health", async () =>
+    HealthResponseSchema.parse({
+      status: "ok",
+      version: "0.1.0",
+    }),
+  );
 
-  app.get("/registry", async () => ({
-    agents: AGENT_REGISTRATIONS.map((registration) => registration.agent),
-    prompt_builders: Object.keys(PROMPT_BUILDERS),
-    action_parsers: Object.keys(ACTION_PARSERS),
-    context_strategies: Object.keys(CONTEXT_STRATEGIES),
-    tools: Object.keys(TOOL_PRESETS),
-  }));
+  app.get("/registry", async () =>
+    RegistryResponseSchema.parse({
+      prompt_builders: Object.keys(PROMPT_BUILDERS).sort(),
+      action_parsers: Object.keys(ACTION_PARSERS).sort(),
+      context_strategies: Object.keys(CONTEXT_STRATEGIES).sort(),
+      tools: Object.keys(TOOL_PRESETS).sort(),
+    }),
+  );
 
   app.post("/run", async (request, reply) => {
     const payload = RunRequestSchema.parse(request.body);
@@ -32,7 +57,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       max_tokens: payload.context_strategy.max_tokens,
       llm,
     });
-    const tools = TOOL_PRESETS[payload.tools === "custom" ? process.env.RUNTIME_TOOLS_PRESET ?? "minimal" : payload.tools] ?? TOOL_PRESETS.minimal;
+    const tools = TOOL_PRESETS[resolveToolPreset(payload.tools)];
 
     const runtime = new AgentRuntime({
       llm,

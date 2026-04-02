@@ -48,6 +48,6 @@ export const FINISH_TOOL: ToolSpec = {
   },
   call: (args) => args.result,
   interpreter: safeInterpreter((raw) =>
-    safeObservation(String(raw ?? ""), null, { isFinish: true }),
+    safeObservation(String(raw ?? ""), null, { is_finish: true }),
   ),
 };

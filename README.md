@@ -58,6 +58,14 @@ python -m agent_runtime_client.demo
 - runtime prompt、tool description 与实验接口统一使用英文，保证高频路径稳定。
 - 中文主要保留在文档与协作层。
 - 当前已接入的迁移适配器包括 `claude-code-sourcemap`、`goose`、`ii-agent`、`pi-mono`、`opencode`、`cline` 与 `openhands`。
+- `agent_runtime_design.md` 已按 `agent_runtime_design_raw.md` 恢复核心设计规范。
+- runtime core、HTTP server contract 与 Python client/eval 正在向原始设计对齐，相关回归测试已纳入仓库。
+
+## 最新进展
+
+- 补齐了 runtime core 对齐测试与 server contract 测试。
+- `/run`、`/health`、`/registry` 的公开 contract 已重新对齐原始设计基线，同时保留内部 adapter 扩展能力。
+- Python client、类型定义、ablation 脚本与 SWE runner 骨架已回到更接近原始设计的接口形状。
 
 ## 迁移原则
 

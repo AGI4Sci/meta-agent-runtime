@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-- 当前集成分支：`codex/bootstrap-reference-runtime`
+- 当前工作分支：`main`
 - 本次多 agent 迁移成果主要是从各个 linked worktree 中回收整合的，不是直接来自分支上的独立提交。
 - 仓库当前已经接入可运行的 adapter 边界：
   - `claude-code-sourcemap`
@@ -16,6 +16,8 @@
 - runtime 侧注册已经收口到 `runtime/src/server/agentRegistry.ts`。
 - runtime prompt 继续保持英文单轨。
 - 中文文档与英文文档继续分离维护。
+- `agent_runtime_design.md` 已按 `agent_runtime_design_raw.md` 恢复原始设计规范主体。
+- runtime core、server contract 与 Python client/eval 的第一轮代码对齐已完成并进入回归验证阶段。
 
 ## 已完成验证
 
@@ -28,6 +30,8 @@
 - TypeScript 构建通过
 - runtime 测试全部通过
 - Python eval 目录编译通过
+- runtime 新增对齐回归测试与 server contract 测试通过
+- Python `unittest` 入口仍受环境依赖影响，当前机器缺少 `httpx`
 
 ## Adapter 接入状态
 
@@ -49,10 +53,11 @@
 
 ## 下一步 TODO
 
-- 在文档层级确认稳定后，整理并提交当前集成快照
-- 检查是否还有迁移报告缺少英文对应版本
+- 将当前设计恢复与代码对齐结果提交到 `main`
+- 在具备 Python 依赖后补跑 `eval` 单元测试
 - 补一个轻量矩阵，记录每个 adapter 支持的 prompt/parser/context/tool preset 名称
 - 补 `/registry` 返回内容的断言测试，覆盖 agent 名称和 preset key
+- 继续做 D 类边界清理，只处理明确的设计漂移，不做过度重构
 
 ## SWE 评测计划
 

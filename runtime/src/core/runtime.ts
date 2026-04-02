@@ -92,7 +92,7 @@ export class AgentRuntime {
             observation = safeObservation("", `Parse failed: ${error.message}`);
             currentContext = this.updateAndTrim(currentContext, rawText, observation);
             currentContext = { ...currentContext, step: currentContext.step + 1 };
-            records.push({
+            const record: StepRecord = {
               step: currentContext.step,
               prompt,
               rawText,
@@ -101,8 +101,9 @@ export class AgentRuntime {
               tokenIn,
               tokenOut,
               elapsedMs: Date.now() - startedAt,
-            });
-            this.notifyStep(records.at(-1)!);
+            };
+            records.push(record);
+            this.notifyStep(record);
             continue;
           }
 
@@ -129,7 +130,7 @@ export class AgentRuntime {
         if (done) {
           return this.finalize({
             success: done === "finish",
-            result: action.name === "finish" ? String(action.args.result ?? "") : "",
+            result: this.resolveRunResult(records, action, done),
             steps: records,
             totalTokenIn,
             totalTokenOut,
@@ -196,10 +197,15 @@ export class AgentRuntime {
   }
 
   private updateAndTrim(context: Context, rawText: string, observation: Observation): Context {
+    const step = context.step + 1;
     const newEntries: ContextEntry[] = [
       ...context.entries,
-      { role: "assistant", content: rawText, metadata: { step: context.step + 1 } },
-      { role: "tool", content: observation.content, metadata: { error: observation.error } },
+      { role: "assistant", content: rawText, metadata: { step } },
+      {
+        role: "tool",
+        content: this.observationToContextContent(observation),
+        metadata: { step, error: observation.error },
+      },
     ];
     const nextContext: Context = {
       ...context,
@@ -213,9 +219,35 @@ export class AgentRuntime {
     return this.llm.countTokens(task) + entries.reduce((sum, entry) => sum + this.llm.countTokens(entry.content), 0);
   }
 
+  private observationToContextContent(observation: Observation): string {
+    if (observation.error && observation.content) {
+      return `${observation.content}\n\nERROR: ${observation.error}`;
+    }
+    if (observation.error) {
+      return `ERROR: ${observation.error}`;
+    }
+    return observation.content;
+  }
+
+  private resolveRunResult(
+    records: StepRecord[],
+    action: Action,
+    terminationReason: TerminationReason,
+  ): string {
+    if (terminationReason === "finish") {
+      return String(action.args.result ?? "");
+    }
+
+    return records.at(-1)?.observation.content ?? "";
+  }
+
   private notifyStep(record: StepRecord): void {
     for (const observer of this.observers) {
       try {
+        if (typeof observer.on_step === "function") {
+          observer.on_step(record);
+          continue;
+        }
         observer.onStep(record);
       } catch {
         // observer failures must not break the loop
@@ -226,6 +258,10 @@ export class AgentRuntime {
   private finalize(result: RunResult): RunResult {
     for (const observer of this.observers) {
       try {
+        if (typeof observer.on_run_end === "function") {
+          observer.on_run_end(result);
+          continue;
+        }
         observer.onRunEnd(result);
       } catch {
         // observer failures must not break finalization
