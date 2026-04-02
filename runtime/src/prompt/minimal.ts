@@ -8,8 +8,8 @@ export class MinimalPromptBuilder implements PromptBuilder {
     const language = options.language;
     return [
       `${label(language, { zh: "任务", en: "TASK" })}:\n${task}`,
-      `${label(language, { zh: "工具", en: "TOOLS" })}:\n${renderTools(tools)}`,
-      `${label(language, { zh: "历史", en: "HISTORY" })}:\n${renderContext(context)}`,
+      `${label(language, { zh: "工具", en: "TOOLS" })}:\n${renderTools(tools, language)}`,
+      `${label(language, { zh: "历史", en: "HISTORY" })}:\n${renderContext(context, language)}`,
     ].join("\n\n");
   }
 }

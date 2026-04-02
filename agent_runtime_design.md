@@ -198,6 +198,7 @@ class PromptBuilder(Protocol):
 - 必须包含 context 历史
 - 必须是纯函数
 - 必须支持 `options.language in {"zh", "en"}`
+- tools 的描述文本应支持按语言渲染，而不是在 prompt 中硬编码单语说明
 
 ### 4.3 `ActionParser`
 

@@ -22,9 +22,9 @@ export class ReActPromptBuilder implements PromptBuilder {
       "",
       `${label(language, { zh: "任务", en: "Task" })}:\n${task}`,
       "",
-      `${label(language, { zh: "工具", en: "Tools" })}:\n${renderTools(tools)}`,
+      `${label(language, { zh: "工具", en: "Tools" })}:\n${renderTools(tools, language)}`,
       "",
-      `${label(language, { zh: "历史", en: "History" })}:\n${renderContext(context)}`,
+      `${label(language, { zh: "历史", en: "History" })}:\n${renderContext(context, language)}`,
     ].join("\n");
   }
 }

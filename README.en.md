@@ -56,6 +56,7 @@ python -m agent_runtime_client.demo
 - The repository includes the reference runtime skeleton, server, Python client, and adapter-oriented migration layout.
 - LLM providers are still scaffolds and can be wired to real implementations later.
 - HTTP `POST /run` now reserves a `prompt_language` field for selecting Chinese or English prompts.
+- Tool `description` now supports localized Chinese/English resources and is rendered according to the selected prompt language.
 
 ## Migration Principles
 

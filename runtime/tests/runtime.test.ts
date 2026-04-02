@@ -11,6 +11,7 @@ import type {
 import type { Context } from "../src/core/types";
 import type { ToolSpec } from "../src/core/toolSpec";
 import { NoopContextStrategy } from "../src/context/noop";
+import { MinimalPromptBuilder } from "../src/prompt/minimal";
 
 class StubLLM implements LLMClient {
   private calls = 0;
@@ -66,4 +67,25 @@ test("runtime forwards prompt language to prompt builder", async () => {
   const result = await runtime.run("test task");
   assert.equal(result.success, true);
   assert.equal(result.totalTokenIn > 0, true);
+});
+
+test("minimal prompt localizes tool descriptions", () => {
+  const promptBuilder = new MinimalPromptBuilder();
+  const tool: ToolSpec = {
+    name: "demo_tool",
+    description: {
+      zh: "中文工具说明",
+      en: "English tool description",
+    },
+    argsSchema: { type: "object", properties: {} },
+    call: () => "",
+    interpreter: () => ({ content: "", error: null, metadata: {} }),
+  };
+  const context = { task: "t", entries: [], step: 0, tokenCount: 0 };
+
+  const zhPrompt = promptBuilder.build("task", [tool], context, { language: "zh" });
+  const enPrompt = promptBuilder.build("task", [tool], context, { language: "en" });
+
+  assert.match(zhPrompt, /中文工具说明/);
+  assert.match(enPrompt, /English tool description/);
 });

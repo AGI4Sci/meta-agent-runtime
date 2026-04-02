@@ -56,6 +56,7 @@ python -m agent_runtime_client.demo
 - 已完成参考框架骨架，包括核心 runtime、server、Python client 与迁移目录。
 - LLM provider 仍是可扩展 scaffold，后续可按实验需要接入真实实现。
 - HTTP `POST /run` 已预留 `prompt_language` 字段，用于选择中文或英文 prompt。
+- tool `description` 已支持中英双语资源，prompt 会按语言配置渲染工具说明。
 
 ## 迁移原则
 

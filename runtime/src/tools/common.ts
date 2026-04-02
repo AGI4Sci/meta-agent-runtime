@@ -1,9 +1,9 @@
-import type { ToolSpec } from "../core/toolSpec";
+import type { LocalizedText, ToolSpec } from "../core/toolSpec";
 import { safeInterpreter, safeObservation } from "../core/toolSpec";
 
 export function stringTool(
   name: string,
-  description: string,
+  description: string | LocalizedText,
   argsSchema: Record<string, unknown>,
   call: ToolSpec["call"],
 ): ToolSpec {
@@ -15,4 +15,3 @@ export function stringTool(
     interpreter: safeInterpreter((raw) => safeObservation(String(raw ?? ""))),
   };
 }
-

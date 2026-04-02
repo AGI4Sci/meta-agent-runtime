@@ -18,9 +18,9 @@ export class CoTPromptBuilder implements PromptBuilder {
       "",
       `${label(language, { zh: "任务", en: "Task" })}:\n${task}`,
       "",
-      `${label(language, { zh: "可用工具", en: "Available tools" })}:\n${renderTools(tools)}`,
+      `${label(language, { zh: "可用工具", en: "Available tools" })}:\n${renderTools(tools, language)}`,
       "",
-      `${label(language, { zh: "上下文", en: "Context" })}:\n${renderContext(context)}`,
+      `${label(language, { zh: "上下文", en: "Context" })}:\n${renderContext(context, language)}`,
     ].join("\n");
   }
 }

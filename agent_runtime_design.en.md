@@ -152,6 +152,7 @@ class RunResult:
 ### 4.2 `PromptBuilder`
 
 The prompt builder must be a pure function and must support `options.language in {"zh", "en"}`.
+Tool descriptions should also be rendered according to the selected language instead of remaining hard-coded in one language.
 
 ### 4.3 `ActionParser`
 
