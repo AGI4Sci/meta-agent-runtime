@@ -48,31 +48,75 @@ function parseTagValue(body: string, tag: string): string | undefined {
   return match?.[1]?.trim();
 }
 
-function coerceValue(key: string, value: string): unknown {
-  if (key === "requires_approval") {
-    return value.toLowerCase() === "true";
+function parseLongTagValue(body: string, tag: string): string | undefined {
+  const openTag = `<${tag}>`;
+  const closeTag = `</${tag}>`;
+  const start = body.indexOf(openTag);
+  const end = body.lastIndexOf(closeTag);
+  if (start === -1 || end === -1 || end < start) {
+    return undefined;
   }
-  if (key === "timeout") {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : value;
-  }
-  return value;
+  return body.slice(start + openTag.length, end).trim();
 }
 
-function parseArgs(body: string): Record<string, unknown> {
-  const args: Record<string, unknown> = {};
-  const tagPattern = /<([a-zA-Z0-9_\-]+)>([\s\S]*?)<\/\1>/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = tagPattern.exec(body)) !== null) {
-    const [, key, rawValue] = match;
-    if (TOOL_NAMES.includes(key as ToolName)) {
-      continue;
-    }
-    args[key] = coerceValue(key, rawValue.trim());
+function parseBoolean(value: string | undefined): boolean | undefined {
+  if (value === undefined) {
+    return undefined;
   }
+  return value.trim().toLowerCase() === "true";
+}
 
-  return args;
+function parseNumber(value: string | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseToolArgs(name: ToolName, body: string): Record<string, unknown> {
+  switch (name) {
+    case "execute_command":
+      return {
+        command: parseTagValue(body, "command") ?? "",
+        requires_approval: parseBoolean(parseTagValue(body, "requires_approval")),
+        timeout: parseNumber(parseTagValue(body, "timeout")),
+      };
+    case "read_file":
+      return {
+        path: parseTagValue(body, "path") ?? "",
+      };
+    case "write_to_file":
+      return {
+        path: parseTagValue(body, "path") ?? "",
+        content: parseLongTagValue(body, "content") ?? "",
+      };
+    case "replace_in_file":
+      return {
+        path: parseTagValue(body, "path") ?? "",
+        diff: parseLongTagValue(body, "diff") ?? "",
+      };
+    case "search_files":
+      return {
+        path: parseTagValue(body, "path") ?? "",
+        regex: parseTagValue(body, "regex") ?? "",
+        file_pattern: parseTagValue(body, "file_pattern"),
+      };
+    case "list_files":
+      return {
+        path: parseTagValue(body, "path") ?? "",
+        recursive: parseBoolean(parseTagValue(body, "recursive")),
+      };
+    case "attempt_completion":
+      return {
+        result: parseLongTagValue(body, "result") ?? "",
+        command: parseTagValue(body, "command"),
+      };
+  }
+}
+
+function dropUndefinedValues(input: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
 }
 
 export class ClineActionParser implements ActionParser {
@@ -83,15 +127,12 @@ export class ClineActionParser implements ActionParser {
     }
 
     const body = extractToolBody(rawText, name);
-    const args = parseArgs(body);
+    const args = dropUndefinedValues(parseToolArgs(name, body));
 
     if (name === "attempt_completion") {
       return {
         name: "finish",
-        args: {
-          result: String(parseTagValue(body, "result") ?? ""),
-          command: parseTagValue(body, "command"),
-        },
+        args,
         rawText,
       };
     }

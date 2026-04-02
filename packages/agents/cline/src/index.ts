@@ -3,6 +3,7 @@ import type { ToolSpec } from "../../../../runtime/src/core/toolSpec";
 import { ClineActionParser } from "./actionParser";
 import { ClineContextStrategy } from "./contextStrategy";
 import { ClinePromptBuilder } from "./promptBuilder";
+import { CLINE_PROMPT_TOOL_SPECS, getClinePromptToolSpec } from "./toolPromptSpec";
 import { CLINE_MINIMAL_TOOLS } from "./toolPreset";
 
 export const CLINE_ADAPTER_NAME = "cline";
@@ -25,3 +26,5 @@ export function createClineContextStrategy(input: {
 export function getClineToolPreset(): ToolSpec[] {
   return CLINE_MINIMAL_TOOLS;
 }
+
+export { CLINE_PROMPT_TOOL_SPECS, getClinePromptToolSpec };

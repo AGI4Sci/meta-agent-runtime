@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -22,8 +22,20 @@ test("goose parser accepts tool/arguments payload inside fence", () => {
   assert.equal(action.args.path, "a.txt");
 });
 
+test("goose parser accepts function envelope with stringified arguments", async () => {
+  const parser = new GooseActionParser();
+  const fixturePath = path.join(process.cwd(), "tests/fixtures/goose/function-call-envelope.json");
+  const payload = await readFile(fixturePath, "utf8");
+  const action = parser.parse(payload);
+
+  assert.equal(action.name, "edit");
+  assert.equal(action.args.path, "src/main.ts");
+  assert.equal(action.args.before, "old");
+  assert.equal(action.args.after, "new");
+});
+
 test("goose prompt builder renders goose instructions and tools", () => {
-  const builder = new GoosePromptBuilder();
+  const builder = new GoosePromptBuilder("2026-04-02 12:00");
   const prompt = builder.build(
     "Inspect the repo",
     GOOSE_TOOL_PRESET,
@@ -31,27 +43,30 @@ test("goose prompt builder renders goose instructions and tools", () => {
   );
 
   assert.match(prompt, /You are a general-purpose AI agent called goose/);
+  assert.match(prompt, /open-source software project/);
   assert.match(prompt, /## developer/);
+  assert.match(prompt, /The current date is 2026-04-02 12:00\./);
   assert.match(prompt, /"name":"tool_name"/);
 });
 
-test("goose context strategy trims to last entries", () => {
-  const strategy = new GooseContextStrategy(2);
+test("goose context strategy trims to fit token budget", () => {
+  const strategy = new GooseContextStrategy(5);
   const trimmed = strategy.trim({
     task: "demo",
     step: 3,
     tokenCount: 10,
     entries: [
-      { role: "assistant", content: "a", metadata: {} },
-      { role: "tool", content: "b", metadata: {} },
-      { role: "assistant", content: "c", metadata: {} },
+      { role: "assistant", content: "12345678901234567890", metadata: {} },
+      { role: "tool", content: "12345678", metadata: {} },
+      { role: "assistant", content: "12345678", metadata: {} },
     ],
   });
 
   assert.deepEqual(
     trimmed.entries.map((entry) => entry.content),
-    ["b", "c"],
+    ["12345678", "12345678"],
   );
+  assert.equal(trimmed.tokenCount, 5);
 });
 
 test("goose tree tool respects depth and ignores .gitignored files via rg", async () => {
@@ -81,9 +96,25 @@ test("goose edit tool requires unique matches", async () => {
     await writeFile(filePath, "same\nsame\n", "utf8");
 
     await assert.rejects(
-      async () => gooseEditTool.call({ path: filePath, old_text: "same", new_text: "new" }),
+      async () => gooseEditTool.call({ path: filePath, before: "same", after: "new" }),
       /must match uniquely/,
     );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("goose edit tool accepts empty after text for deletion", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "goose-edit-delete-"));
+  try {
+    const filePath = path.join(tempDir, "demo.txt");
+    await writeFile(filePath, "keep\nremove\n", "utf8");
+
+    const result = await gooseEditTool.call({ path: filePath, before: "remove\n", after: "" });
+    const updated = await readFile(filePath, "utf8");
+
+    assert.match(String(result), /Edited .* \(1 lines -> 0 lines\)/);
+    assert.equal(updated, "keep\n");
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -96,4 +127,12 @@ test("goose shell tool preserves exit code in error output", async () => {
   assert.equal(observation.error, "shell exited with code 7");
   assert.match(observation.content, /exit_code: 7/);
   assert.match(observation.content, /stderr:\noops/);
+});
+
+test("goose shell tool supports timeout_secs", async () => {
+  const raw = await gooseShellTool.call({ command: "sleep 2", timeout_secs: 1 });
+  const observation = gooseShellTool.interpreter(raw);
+
+  assert.equal(observation.error, "shell timed out");
+  assert.match(observation.content, /timed_out: true/);
 });

@@ -1,12 +1,12 @@
 # OpenCode 迁移报告
 
-本文记录 `opencode` 迁移到 `meta-agent-runtime` 共享框架的当前状态。
+本文记录 `opencode` 迁移到 `meta-agent-runtime` 共享框架的当前状态，并补充最近一轮“相对 raw 设计与迁移前项目算法的忠实度核查”结果。
 
-- 迁移日期：2026-04-02
-- 目标仓库：`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-opencode`
+- 首轮迁移日期：2026-04-02
+- 最近更新：2026-04-02
+- 目标仓库：`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime`
 - 参考源仓库：`/Applications/workspace/ailab/research/code-agent/opencode`
-- 工作分支：`codex/migrate-opencode`
-- 本轮目标：优先迁移最小可运行骨架，不追求一次性复刻完整行为
+- 本轮目标：在最小可运行骨架基础上，检查并修正相对 raw 设计和原始 `opencode` 算法的明显偏移，同时把适配器整理为更利于模块化研究的形态
 
 ## 1. 本轮遵循的约束
 
@@ -126,7 +126,7 @@
 
 新增 `OpenCodePromptBuilder`，目标是提供一个符合当前 runtime 接口、但保留 OpenCode 关键风格的 prompt 骨架。
 
-当前实现包含：
+首轮实现包含：
 
 - OpenCode 身份描述
 - CLI coding agent 定位
@@ -138,7 +138,15 @@
 - `{"tool":"<tool-name>","input":{...}}` 调用格式
 - `finish` 的显式格式说明
 
-本实现不是源仓库 `SystemPrompt + InstructionPrompt + runtime assembly` 的完整复刻，而是面向共享 runtime 的兼容 prompt builder。
+最近一轮又进一步向原项目靠拢，补回了更接近 `codex_header` / `system` 风格的约束语气，包括：
+
+- OpenCode 身份描述
+- 编辑约束
+- 工具使用偏好
+- git / workspace hygiene
+- JSON-only 响应契约
+
+当前实现仍不是源仓库 `SystemPrompt + InstructionPrompt + runtime assembly` 的完整复刻，而是面向共享 runtime 的兼容 prompt builder。
 
 ### 3.3 ActionParser 迁移
 
@@ -147,7 +155,10 @@
 支持的输入格式：
 
 - `{"name":"bash","args":{"command":"pwd"}}`
+- `{"name":"bash","arguments":{"command":"pwd"}}`
 - `{"tool":"read","input":{"filePath":"README.md"}}`
+- fenced JSON 代码块
+- `toolCall` 包裹格式
 - `{"result":"done"}`，自动映射到 `finish`
 
 设计目标：
@@ -166,6 +177,8 @@
 - 以字符数近似 token
 - 超出窗口后保留最近历史
 - 在历史被裁剪时插入一条 synthetic omission marker
+- omission marker 现在带有更明确的 `condensed` / `synthetic` 元数据
+- `trim()` 明确返回新对象，不复用原 entries 引用
 
 这样做的目的不是复刻 `SessionCompaction`，而是为未来的真实 compaction/summary 迁移预留语义位置。
 
@@ -182,10 +195,12 @@
 
 其中：
 
-- `read` 同时支持文件读取和目录列举
-- `edit` 使用单次字符串替换
-- `write` 直接覆盖写入
-- `grep` / `glob` 基于 `rg`
+- `bash` 补回了更接近源仓库的 `timeout` / `workdir` / `description` 参数形状
+- `bash` 返回中补了 `<bash_metadata>` 兼容信息
+- `read` 同时支持文件读取和目录列举，默认行数上限也更接近源仓库
+- `edit` 支持 `replaceAll`
+- `write` 会在必要时创建父目录
+- `grep` / `glob` 基于 `rg`，参数形状也向源工具靠拢
 
 这套工具是“共享 runtime 兼容版本”，而不是源仓库完整工具实现。当前未接入：
 
@@ -196,7 +211,35 @@
 - external directory protection
 - file mtime discipline
 
-### 3.6 runtime 最小注册
+### 3.6 为模块化研究做的整理
+
+为了便于做 prompt / parser / tools 的消融实验，最近一轮又做了轻量整理：
+
+- 在 `packages/agents/opencode/src/toolPreset.ts` 中将工具拆成可单独导出的命名部件：
+  - `openCodeBashTool`
+  - `openCodeReadTool`
+  - `openCodeEditTool`
+  - `openCodeWriteTool`
+  - `openCodeGrepTool`
+  - `openCodeGlobTool`
+- 新增：
+  - `OPEN_CODE_TOOL_NAMES`
+  - `OpenCodeToolName`
+  - `createOpenCodeToolPreset({ include })`
+- 在 `packages/agents/opencode/src/index.ts` 中统一 re-export：
+  - `OpenCodePromptBuilder`
+  - `OpenCodeActionParser`
+  - `OpenCodeContextStrategy`
+  - `createOpenCodeToolPreset`
+  - `openCodeToolPreset`
+
+这样可以更方便地做：
+
+- 工具子集 ablation
+- prompt/parser/context 独立替换
+- 不同 adapter 之间的 apples-to-apples 对照
+
+### 3.7 runtime 最小注册
 
 为了让适配器可被共享 runtime 调用，本轮仅做了必要 registry 接入：
 
@@ -212,7 +255,7 @@
 
 没有改动 `runtime/src/core/*` 主循环代码。
 
-### 3.7 构建与测试脚本修正
+### 3.8 构建与测试脚本修正
 
 由于 `runtime/tsconfig.json` 将 `packages/agents/opencode/src/**/*.ts` 纳入编译范围，`rootDir` 调整为上层目录后，编译产物路径变为：
 
@@ -238,6 +281,7 @@
 - OpenCode 风格 action parser
 - OpenCode 最小 context trimming strategy
 - OpenCode 最小工具映射集合
+- OpenCode 工具集的可组合导出与子集工厂
 - runtime registry 最小接入
 - runtime schema 接入
 - 最小自动化测试覆盖
@@ -303,13 +347,15 @@
 
 ## 6. 与源仓库行为的差异说明
 
-当前适配器和源仓库存在明显差异，需在后续实验中注意：
+当前适配器和源仓库仍存在明显差异，需在后续实验中注意：
 
 - 当前是“共享 runtime + OpenCode 兼容组件”，不是完整 OpenCode runtime
 - 当前 parser 是离线 JSON parser，不是 streaming tool-call protocol
 - 当前 context strategy 只是轻量裁剪，不含 compaction/summary
 - 当前 tools 是最小运行集合，不包含原仓库权限、插件、MCP 等机制
 - 当前 prompt 只保留了核心风格，不包含源仓库全部模型分流与注入逻辑
+- 当前工具仍缺少原仓库中的 ask / permission / plugin / LSP / truncation 等真实侧效应边界
+- 当前兼容层更适合“组件对照实验”，不适合直接拿来代表原始 OpenCode 完整 CLI 行为
 
 因此，本轮结果适合用于：
 
@@ -324,21 +370,31 @@
 
 ## 7. 验证记录
 
-本轮执行了以下验证：
+本轮累计执行了以下验证：
 
 - 在 `runtime/` 下执行 `npm install`
 - 执行 `npm run build`
 - 执行 `npm test`
+- 对 `opencode` adapter 相关源码做定向 TypeScript 校验：
+  - `runtime/tests/opencodeAdapter.test.ts`
+  - `packages/agents/opencode/src/*.ts`
+  - `runtime/src/core/*.ts`
 
 测试结果：
 
-- 8 个测试全部通过
+- 首轮最小骨架验证通过
+- 最近一轮定向 TypeScript 校验通过
+- 全量 `runtime` build/test 不能单独作为 `opencode` 迁移结论，因为仓库内存在其他 agent 的既有 TypeScript 错误，会污染全量结果
 
-其中包含新增验证：
+其中包含的有效新增验证包括：
 
 - OpenCode parser 解析 `tool/input` 格式
+- OpenCode parser 解析 fenced JSON 与 `arguments` 别名
 - OpenCode prompt 渲染 JSON action contract
+- OpenCode prompt 保留更接近原项目的工具偏好与 workspace hygiene 约束
 - OpenCode 工具预设完成一个最小 `read -> write -> finish` loop
+- OpenCode context strategy 插入 condensed marker
+- OpenCode tool preset 支持按工具名做子集裁剪
 
 ## 8. 后续建议
 
@@ -352,13 +408,15 @@
 
 ## 9. 本轮结论
 
-本轮迁移已经完成“最小可运行骨架”目标。
+当前阶段已经完成“最小可运行骨架 + 一轮忠实度修正 + 一轮研究友好整理”。
 
 当前状态可以概括为：
 
 - 已完成 OpenCode 在 shared runtime 上的最小 prompt/parser/context/tools 适配
+- 已修正一批相对原项目过度简化的 prompt / parser / tool 偏移
+- 已把工具导出整理成更适合模块化研究与消融实验的结构
 - 已完成必要 registry 接入
-- 已通过 build/test 验证
+- 已通过定向源码校验与 adapter 测试验证
 - 尚未迁移原仓库的高级 loop、权限、压缩、子代理、MCP 和观测能力
 
 这为后续更细粒度的模块对比实验提供了一个可编译、可测试、可运行的起点。

@@ -1,188 +1,116 @@
 # OpenHands Migration Status Report
 
-## 1. Objective of This Migration
+## 1. Current Summary
 
-This migration focused on extracting the minimum runnable OpenHands unit and adapting it to the shared `meta-agent-runtime` framework under the current platform constraints:
+The OpenHands migration has now reached the "minimum runnable and research-friendly" stage.
 
-- keep agent-specific logic isolated from the shared runtime core whenever possible
-- preserve English-only prompts and tool descriptions inside runtime execution paths
-- keep documentation split into separate Chinese and English files
-- avoid touching other agent migration directories
-- prefer the smallest runnable compatibility skeleton over a full fidelity port
+Current status:
 
-The goal of this iteration was not a full OpenHands reimplementation. The goal was to land a minimal compatibility adapter that can run inside the shared linear runtime loop.
+- the main OpenHands adapter implementation now lives under `packages/agents/openhands/`
+- the adapter exposes distinct `PromptBuilder`, `ActionParser`, `ContextStrategy`, and `ToolSpec` mappings
+- minimal runtime registry integration is complete
+- the adapter now has stronger source-aligned compatibility tests
+- explicit compatibility losses are still documented instead of being disguised as full fidelity
 
-## 2. Files and Codepaths Reviewed
+## 2. Migration Boundary
 
-### 2.1 Target Repository Documents
+This migration does not attempt to recreate all of OpenHands. It compresses the smallest runnable OpenHands unit into the boundaries that the shared linear runtime can support.
 
-The following documents were reviewed before implementation:
+Constraints followed in this migration:
 
-- `agent_runtime_design.md`
-- `docs/migration.zh.md`
-- `README.md`
+- agent-specific logic should stay inside `packages/agents/openhands/` whenever possible
+- `runtime/` should stay agent-agnostic and only receive minimal registry wiring
+- runtime prompts, tool descriptions, and interaction contracts remain English-only
+- documentation remains split into separate Chinese and English files
+- other agent migration directories should not be disturbed
 
-Key constraints derived from those documents:
+## 3. Source Review Scope
 
-- the runtime loop is intentionally linear: `LLM -> Action -> Tool -> Observation`
-- the primary migration mapping points are `PromptBuilder`, `ActionParser`, `ContextStrategy`, and `ToolSpec`
-- `runtime/src/core/*` should remain agent-agnostic
-- new agent behavior should enter through registry wiring rather than core loop changes
-- runtime-facing prompts and tool descriptions should remain English-only
+The following OpenHands V0 files were used as the main source of truth during migration and later correction:
 
-### 2.2 Source OpenHands Codepaths
-
-The following OpenHands files were reviewed as the main reference:
-
-- `openhands/controller/agent_controller.py`
-- `openhands/controller/action_parser.py`
 - `openhands/agenthub/codeact_agent/codeact_agent.py`
 - `openhands/agenthub/codeact_agent/function_calling.py`
+- `openhands/agenthub/codeact_agent/tools/bash.py`
+- `openhands/agenthub/codeact_agent/tools/ipython.py`
+- `openhands/agenthub/codeact_agent/tools/str_replace_editor.py`
+- `openhands/agenthub/codeact_agent/tools/finish.py`
+- `openhands/agenthub/codeact_agent/tools/condensation_request.py`
+- `openhands/controller/agent_controller.py`
 - `openhands/memory/conversation_memory.py`
+- `openhands/events/observation/*.py`
 
-Repository-wide searches were also used to identify the boundaries for:
+The main boundaries reviewed were:
 
-- controller and delegation behavior
-- action and observation taxonomies
-- memory and condensation behavior
-- sandbox, tools, browser, and MCP boundaries
+- controller / pending action / delegation behavior
+- function-calling action envelopes
+- memory / condensation / pairing behavior
+- shell / ipython / editor / sandbox / browser / MCP behavior
 
-## 3. Interpreting the OpenHands Runtime Shape
+## 4. Current Implementation Location
 
-## 3.1 Minimum Runnable Unit
+The main OpenHands adapter implementation now lives in:
 
-From the legacy V0 OpenHands path, the minimum runnable unit can be reduced to:
+- `packages/agents/openhands/src/adapter.ts`
+- `packages/agents/openhands/src/prompt.ts`
+- `packages/agents/openhands/src/parser.ts`
+- `packages/agents/openhands/src/context.ts`
+- `packages/agents/openhands/src/tools.ts`
+- `packages/agents/openhands/src/index.ts`
 
-1. `CodeActAgent` builds messages and tool specs from state
-2. the LLM returns a function-calling style response
-3. `function_calling.py` converts the response into OpenHands actions
-4. the controller executes the action and emits an observation
-5. memory and condensation logic prepare the next-step context
+This is no longer the older `runtime/src/agents/openhands/` layout.
 
-Inside the shared reference runtime, the naturally portable subset is:
+## 5. Capabilities Already Migrated
 
-- prompt construction
-- action parsing
-- lightweight history trimming / condensation compatibility
-- tool schema and tool invocation boundaries
-
-## 3.2 Main Sources of Complexity in Original OpenHands
-
-OpenHands is materially more complex than the shared runtime in several ways:
-
-- `AgentController` owns state transitions, pending actions, loop recovery, and stuck detection
-- delegation uses parent and child controllers
-- actions and observations are rich event types, not a single flattened pair
-- `ConversationMemory` reconciles tool-call requests with tool responses
-- condensation is an explicit event and memory-view workflow, not only token trimming
-- sandbox execution is a distinct environment layer with browser, MCP, Jupyter, and remote execution support
-
-Most of those capabilities do not map cleanly onto the current single-threaded linear runtime loop.
-
-## 4. What Could Be Mapped and What Could Not
-
-## 4.1 Capabilities That Map Well to the Shared Runtime
-
-The following capabilities were identified as good fits for the shared runtime abstraction:
-
-- `PromptBuilder`
-- `ActionParser`
-- `ContextStrategy`
-- `ToolSpec`
-- `finish` as a standard runtime termination action
-
-These are the parts that were prioritized in this migration.
-
-## 4.2 Capabilities That Do Not Currently Migrate Equivalently
-
-The following capabilities were not migrated with full fidelity and were intentionally downgraded to compatibility shims or left out:
-
-- multi-controller orchestration and delegation
-- pending action queues
-- loop recovery and stuck detection
-- full event stream semantics
-- tool call metadata reconciliation
-- browser workflows
-- MCP integration
-- microagent memory and recall augmentation
-- full condensation request and summary insertion semantics
-- persistent interactive Jupyter state
-- sandbox lifecycle management
-
-## 5. What Was Implemented
-
-## 5.1 New OpenHands Adapter Implementation
-
-New directory added:
-
-- `runtime/src/agents/openhands/`
-
-New files added:
-
-- `runtime/src/agents/openhands/index.ts`
-- `runtime/src/agents/openhands/prompt.ts`
-- `runtime/src/agents/openhands/parser.ts`
-- `runtime/src/agents/openhands/context.ts`
-- `runtime/src/agents/openhands/tools.ts`
-
-These files implement the minimal OpenHands compatibility adapter.
-
-## 5.2 PromptBuilder Mapping
+### 5.1 PromptBuilder
 
 Implemented in:
 
-- `runtime/src/agents/openhands/prompt.ts`
+- `packages/agents/openhands/src/prompt.ts`
 
-The prompt builder now:
+Currently aligned behavior:
 
-- emits English-only runtime prompt content
-- explicitly states that the agent is running inside a shared linear runtime loop
-- warns that delegation, browser sessions, MCP servers, and concurrent controllers are unavailable
-- enforces a single JSON object response format
-- includes task, tools, and current history in the final prompt
+- preserves a minimal OpenHands CodeAct-style compatibility prompt
+- makes the shared linear runtime loop explicit
+- explicitly warns that delegation, browser, MCP, event replay, and concurrent controllers are unavailable
+- explains that `execute_bash` is a persistent shell cwd compatibility layer
+- explains that `execute_ipython_cell` is a replay-based persistent cell compatibility layer
+- explicitly requires `security_risk`
+- explicitly requires absolute paths for the editor and documents `undo_edit`
+- enforces a single JSON tool-call response contract
 
-This is not a byte-for-byte reproduction of OpenHands prompts. It is a compatibility-focused prompt that preserves the CodeAct plus tool-calling interaction style.
-
-## 5.3 ActionParser Mapping
+### 5.2 ActionParser
 
 Implemented in:
 
-- `runtime/src/agents/openhands/parser.ts`
+- `packages/agents/openhands/src/parser.ts`
 
-The parser currently supports:
+Currently supported:
 
 - `{"tool":{"name":"...","arguments":{...}}}`
 - top-level `{"name":"...","arguments":{...}}`
-- normalization of OpenHands-style `finish.message` into runtime `finish.result`
+- function-calling style `tool_calls[0].function.{name, arguments}`
+- normalization from `finish.message` into runtime `finish.result`
 
-This ensures OpenHands-specific response shapes are handled by an agent-specific parser instead of forcing the generic runtime parser to absorb those assumptions.
-
-## 5.4 ContextStrategy Mapping
+### 5.3 ContextStrategy
 
 Implemented in:
 
-- `runtime/src/agents/openhands/context.ts`
+- `packages/agents/openhands/src/context.ts`
 
 Current behavior:
 
-- when token estimates exceed the configured limit, the strategy drops the oldest assistant/tool pairs
-- recent action-observation pairs are preserved
-- a condensed compatibility notice is inserted to acknowledge lost OpenHands history fidelity
+- trims the oldest assistant/tool pairs first when over budget
+- inserts a condensed compatibility notice
+- avoids stacking multiple condensed prefixes
+- returns a fresh context object to preserve the shared runtime contract
 
-This is a deliberately small compatibility layer. It does not attempt to reproduce:
-
-- summary insertion offsets
-- explicit forgotten event tracking
-- recall injection
-- tool-call pairing repairs from OpenHands memory
-
-## 5.5 ToolSpec Mapping
+### 5.4 ToolSpec Mapping
 
 Implemented in:
 
-- `runtime/src/agents/openhands/tools.ts`
+- `packages/agents/openhands/src/tools.ts`
 
-The minimal migrated tool set is:
+Current minimal tool set:
 
 - `execute_bash`
 - `execute_ipython_cell`
@@ -190,171 +118,124 @@ The minimal migrated tool set is:
 - `think`
 - `request_condensation`
 
-Behavior summary:
+Current behavior:
 
 - `execute_bash`
-  - preserves the core shell execution path used heavily by OpenHands
+  - supports `command / is_input / timeout / security_risk`
+  - now preserves minimal persistent shell cwd behavior
+  - `is_input=true` is still an explicit compatibility loss
 - `execute_ipython_cell`
-  - provides a minimal compatibility layer through `python3 -c`
+  - supports `code / timeout / security_risk`
+  - approximates persistent Python state by replaying successful cells
 - `str_replace_editor`
-  - supports a minimal command subset: `view`, `create`, `str_replace`, `insert`
+  - supports `view / create / str_replace / insert / undo_edit`
+  - requires absolute paths
+  - prevents overwrite on `create`
+  - requires unique exact matches for `str_replace`
+  - supports directory viewing and numbered file views
 - `think`
-  - preserves a no-side-effect reasoning trace tool
+  - preserved as a no-side-effect reasoning trace tool
 - `request_condensation`
-  - exists as a compatibility shim while real history reduction remains the job of the shared runtime context strategy
+  - keeps the OpenHands-compatible name while real condensation remains the job of the shared runtime context strategy
 
-## 5.6 Package Export Bridge
+### 5.5 Research-Friendly Component Split
 
-Updated:
+To make future ablation work easier, the tool layer now exposes finer-grained factories:
 
-- `packages/agents/openhands/src/index.ts`
+- `createOpenHandsBashTool()`
+- `createOpenHandsIPythonTool()`
+- `createOpenHandsEditorTool()`
+- `createOpenHandsThinkTool()`
+- `createOpenHandsCondensationTool()`
+- `createOpenHandsTools()`
 
-The package-side file now re-exports the runtime adapter implementation. In this iteration, the full implementation lives under `runtime/src/agents/openhands/`, while the package entry acts as a thin bridge.
+This allows future experiments to swap only one OpenHands tool mapping instead of replacing the entire tool preset as a single opaque bundle.
 
-Reasoning:
+## 6. Fidelity Losses Relative to Original OpenHands
 
-- the runtime registry currently consumes the implementation directly
-- this iteration prioritized the smallest runnable adapter
-- it avoided adding extra packaging or build indirection before the adapter shape stabilizes
-
-If the repository later wants stricter physical placement under `packages/agents/openhands/`, the implementation can be moved in a follow-up refactor.
-
-## 5.7 Minimal Runtime Registry Integration
-
-Updated:
-
-- `runtime/src/server/registry.ts`
-- `runtime/src/server/schema.ts`
-
-Completed integration work:
-
-- registered the `openhands` prompt builder
-- registered the `openhands` action parser
-- registered the `openhands` context strategy
-- registered the `openhands_minimal` tool preset
-- updated the HTTP schema enums so the adapter can be selected at runtime
-
-This followed the migration rule of doing only the minimum necessary registry wiring and leaving the core runtime loop untouched.
-
-## 5.8 Minimal Tests
-
-Added:
-
-- `runtime/tests/openhands.test.ts`
-
-Test coverage includes:
-
-- parsing an OpenHands-style compatibility tool envelope
-- normalizing `finish.message` into runtime finish args
-- ensuring the prompt builder includes compatibility constraints
-- verifying that the OpenHands context strategy performs minimal trimming
-
-## 6. Known Fidelity Losses Relative to Original OpenHands
-
-This migration intentionally lands a minimum runnable skeleton, so there are important fidelity gaps relative to original OpenHands.
-
-## 6.1 Controller-Level Losses
+### 6.1 Controller-Level Losses
 
 Not migrated:
 
 - `AgentController` state machine behavior
-- initial state wiring
+- pending action queues
+- stuck detection / loop recovery
+- parent / delegate controllers
+- replay manager
 - status callbacks
-- replay manager behavior
-- stuck detector behavior
-- loop recovery
-- parent/delegate controller relationships
-- pending action queue semantics
 
-Impact:
-
-- the adapter currently only works as a single-step action producer inside the shared linear loop
-- complex OpenHands control flow is not preserved
-
-## 6.2 Memory and Condensation Losses
+### 6.2 Memory / Condensation Losses
 
 Not migrated:
 
-- `ConversationMemory` tool-call request / tool-response reconciliation
-- dual-path condensation behavior with view generation vs condensation actions
+- `ConversationMemory` pairing between assistant tool calls and tool responses
+- dual-path condensation action vs. memory view behavior
 - `forgotten_event_ids`
-- recall and microagent knowledge injection
-- provider-specific cache and message shaping details
+- recall / microagent knowledge
+- provider-specific message formatting
 
-Impact:
+### 6.3 Sandbox / Tooling Losses
 
-- the shared runtime now uses generic `ContextEntry[]` history
-- prompt history is not guaranteed to match original OpenHands message construction
-- condensation currently means trimming plus a compatibility notice, not full summarization workflow parity
+Not migrated or still shimmed:
 
-## 6.3 Tool and Sandbox Losses
-
-Not migrated or only stubbed:
-
-- browser tools
+- browser tooling
 - MCP tools
-- remote runtime, docker runtime, kubernetes runtime, and local sandbox abstractions
-- persistent IPython or notebook execution state
-- security-risk handling and confirmation-mode behavior
+- security analyzer / confirmation mode
+- remote runtime / docker / kubernetes / local sandbox abstractions
+- a true persistent Jupyter kernel
+- bash stdin continuation for long-running processes
 
-Impact:
+## 7. Parts Still Considered Stub or TODO
 
-- the migrated adapter preserves only the smallest shell, Python, and file editing capabilities
-- execution boundaries now look like the reference runtime, not like the original OpenHands sandbox system
+The following areas still remain stubs or simplified compatibility layers:
 
-## 7. Current Status Assessment
+- the real `request_condensation` behavior
+- a more faithful persistent interpreter for `execute_ipython_cell`
+- fuller OpenHands ACI coverage for `str_replace_editor`
+- OpenHands memory pairing / event serialization semantics
+- browser / MCP / task-tracker / security analyzer alignment
 
-## 7.1 What Is Complete
+## 8. Important Corrections Made in the Latest Pass
 
-This migration can be considered complete for the "minimum runnable skeleton" phase:
+The latest correction pass fixed several "runnable but not faithful enough" deviations:
 
-- OpenHands now has its own prompt/parser/context/tools adapter set
-- the adapter can be selected through the shared runtime registry
-- deterministic tests were added
-- build and test validation passed
+- `execute_bash` moved from one-shot shell execution to a minimal persistent cwd shell compatibility layer
+- `execute_ipython_cell` moved from one-shot `python3 -c` execution to successful-cell replay
+- `str_replace_editor` gained `undo_edit`, absolute-path requirements, unique replacement rules, directory view, and create-without-overwrite behavior
+- the parser gained function-calling envelope support
+- the prompt now documents `security_risk`, editor discipline, and condensation usage more explicitly
+- tool factories were split into individually exportable research units
+- tool preset state is now isolated per run, so different runs do not leak bash/python/editor state into each other
 
-## 7.2 What Is Still Stubbed or Simplified
+## 9. Validation Performed
 
-The following items still exist only as stubs or simplified compatibility layers:
+Validation performed in the latest update:
 
-- `request_condensation`
-- persistent semantics of `execute_ipython_cell`
-- full OpenHands ACI coverage for `str_replace_editor`
-- OpenHands memory pairing and event serialization behavior
+- `node --import tsx --test tests/openhands.test.ts`
+- a targeted script to verify persistent cwd behavior for `execute_bash`
+- a targeted script to verify `create / view / undo_edit` behavior for `str_replace_editor`
 
-## 8. Validation Performed
+Current result:
 
-The following validation steps were executed:
+- OpenHands source-level tests passed
+- targeted shell and editor compatibility checks passed
 
-- `npm install`
-- `npx tsc -p tsconfig.json --noEmit`
-- `npm run build`
-- `npm test`
+Important note:
 
-Validation result:
+- repository-wide `npm run build` can still be blocked by unrelated existing issues in other agent directories; this is not an OpenHands regression from this update
 
-- type checking passed
-- build passed
-- tests passed
-- the newly added OpenHands tests and the pre-existing runtime tests all passed
+## 10. Recommended Next Steps
 
-## 9. Recommended Next Steps
-
-If OpenHands migration continues, the recommended order is:
+If OpenHands migration continues, the recommended next order is:
 
 1. add fixture-based prompt/parser comparisons against source OpenHands behavior
-2. expand `str_replace_editor` toward closer ACI semantic coverage
-3. design a lightweight compatibility layer for tool-call pairing
-4. explicitly decide whether browser and MCP should remain unsupported or gain shims
-5. evaluate whether the implementation should later move fully under `packages/agents/openhands/`
+2. continue extending `str_replace_editor` toward fuller OpenHands ACI semantics
+3. design a compatibility layer for tool-call pairing
+4. decide whether browser and MCP should remain out of scope or get shimmed
+5. add more fine-grained ablation fixtures around the individually exported tool factories
 
-## 10. Conclusion
+## 11. Final Status
 
-This migration did not attempt to "move all of OpenHands over." Instead, it compressed the minimum runnable OpenHands core into a shared-runtime-compatible adapter and explicitly documented the losses.
+The current OpenHands migration status can be summarized as:
 
-The result of this iteration is:
-
-- a registered, buildable, testable OpenHands compatibility skeleton inside `meta-agent-runtime`
-- the four priority mapping points are now implemented: prompt, parser, context, and tools
-- no other agent directories were modified
-- the migration boundary is now much clearer for future incremental work
+**"The minimum runnable skeleton is complete and now structured for modular research, but it is still not a full high-fidelity recreation of the original OpenHands controller/runtime algorithm."**

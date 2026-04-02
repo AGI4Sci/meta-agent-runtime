@@ -10,24 +10,34 @@ export class PiMonoContextStrategy implements ContextStrategy {
 
   trim(context: Context): Context {
     const preserved = context.entries.filter((entry) => entry.metadata.pinned === true);
+    const preservedSet = new Set(preserved);
     const recent: ContextEntry[] = [];
     let tokenCount = preserved.reduce((sum, entry) => sum + estimateTokens(entry.content), 0);
 
-    for (let index = context.entries.length - 1; index >= 0; index -= 2) {
-      const assistantEntry = context.entries[index - 1];
-      const toolEntry = context.entries[index];
-
-      if (!assistantEntry || !toolEntry) {
+    for (let index = context.entries.length - 1; index >= 0; index -= 1) {
+      const entry = context.entries[index];
+      if (preservedSet.has(entry)) {
         continue;
       }
 
-      const pairTokens = estimateTokens(assistantEntry.content) + estimateTokens(toolEntry.content);
-      if (recent.length > 0 && tokenCount + pairTokens > this.maxTokens) {
+      const previous = context.entries[index - 1];
+      const isAssistantToolPair =
+        entry.role === "tool" &&
+        previous?.role === "assistant" &&
+        previous.metadata.step === entry.metadata.step;
+
+      const batch: ContextEntry[] = isAssistantToolPair ? [previous, entry] : [entry];
+      const batchTokens = batch.reduce((sum, item) => sum + estimateTokens(item.content), 0);
+
+      if (recent.length > 0 && tokenCount + batchTokens > this.maxTokens) {
         break;
       }
 
-      recent.unshift(assistantEntry, toolEntry);
-      tokenCount += pairTokens;
+      recent.unshift(...batch);
+      tokenCount += batchTokens;
+      if (isAssistantToolPair) {
+        index -= 1;
+      }
     }
 
     const entries = [...preserved, ...recent];

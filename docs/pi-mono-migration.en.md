@@ -74,6 +74,8 @@ This migration preserved only the stable and minimal subset:
 
 Skills, context files, and extension prompt augmentation were intentionally left out.
 
+Important note: after the first adapter landing, the `pi-mono` migration also went through a follow-up source-faithfulness correction pass. The status below reflects that corrected state, not only the first minimal wiring pass.
+
 #### Action parsing
 
 The original `pi-mono` execution path depends on native model tool calls and streaming assistant content, not on the simplified single-string action parser model used in the current reference runtime.
@@ -83,6 +85,7 @@ Because of that mismatch, this migration did not attempt to recreate the origina
 - expects a single JSON action object
 - accepts fenced JSON
 - normalizes shared-runtime tool names and `pi-mono`-style names through aliases
+- accepts source-style tool envelopes such as `toolCall` / `arguments`
 
 This makes `pi-mono` runnable inside the shared runtime without forcing deep runtime changes.
 
@@ -104,7 +107,8 @@ This migration did not port those systems in full. Instead, it identified the sm
 That led to a lightweight `PiMonoContextStrategy` that:
 
 - preserves explicitly pinned entries
-- trims history backward in assistant/tool pairs
+- trims history backward primarily in assistant/tool pairs
+- keeps trailing non-paired entries stable instead of assuming the entire context is strictly pair-shaped
 - avoids keeping half of a turn
 
 This is closer to `pi-mono` turn semantics than a naive sliding window while still staying simple.
@@ -124,19 +128,14 @@ Additional exploration tools in the source include:
 - `find`
 - `ls`
 
-The shared runtime already had overlapping tools, but with different names:
+The shared runtime already had overlapping tools, but not the exact readonly surface used by the source repository.
 
-- `file_read`
-- `file_edit`
-- `file_write`
-- `bash`
-- `search`
-
-So this migration mapped existing shared tools rather than re-implementing them:
+So the adapter now uses a mixed approach:
 
 - `file_read/file_edit/file_write` are exposed as `read/edit/write`
 - shared `bash` is reused directly
-- a minimal readonly preset is exposed as `read + search`
+- minimal compat implementations are provided for `grep`, `find`, and `ls`
+- the readonly preset is restored to `read + grep + find + ls`
 
 #### Main loop boundary
 
@@ -179,10 +178,11 @@ Added `PiMonoPromptBuilder` with the following behavior:
 - keeps the prompt fully in English
 - preserves the `pi`-style assistant framing
 - renders a dynamic tool list
-- derives lightweight guidelines from the active tool set
-- injects current date and time
+- derives tool-aware guidance closer to the original `system-prompt.ts`
+- injects current date/time and working directory
 - renders the task and prior history
 - enforces a single JSON action contract
+- exposes injectable `cwd` / `now()` hooks for deterministic experiments
 
 This is a minimal compatibility extraction from the original `system-prompt.ts`, not a full feature port.
 
@@ -192,6 +192,7 @@ Added `PiMonoActionParser` with the following behavior:
 
 - accepts plain JSON or fenced JSON
 - parses `{ name, args }`
+- accepts source-style envelopes including `toolCall`, `arguments`, and `tool_input`
 - normalizes `file_read/file_edit/file_write` into `read/edit/write`
 - raises runtime-standard `ParseError` on invalid payloads
 
@@ -200,9 +201,10 @@ Added `PiMonoActionParser` with the following behavior:
 Added `PiMonoContextStrategy` with the following behavior:
 
 - accepts a token budget
-- trims history in assistant/tool pairs
+- trims history primarily in assistant/tool pairs
 - preserves entries marked with `metadata.pinned === true`
 - avoids leaving dangling half-turns in history
+- remains stable when the latest entry is not part of a tool pair
 
 This is intentionally lightweight and does not include compaction summaries, branch summaries, or custom message transforms.
 
@@ -216,9 +218,9 @@ Added two presets:
 They currently map to:
 
 - `piMonoCodingTools = [read, bash, edit, write]`
-- `piMonoReadonlyTools = [read, search]`
+- `piMonoReadonlyTools = [read, grep, find, ls]`
 
-The tools are mapped to shared runtime implementations rather than newly implemented from scratch.
+`read/edit/write/bash` still reuse shared runtime implementations where possible, while `grep/find/ls` are minimal compat tools added to preserve the source repository's exploration surface.
 
 ### 4.6 Registry integration
 
@@ -241,57 +243,63 @@ Because the adapter now lives outside `runtime/`, while the runtime registry imp
 
 These changes are purely for compilation and packaging of the adapter source.
 
-## 5. Capabilities Migrated in This Pass
+## 5. Capabilities Migrated So Far
 
-This pass successfully migrated or established compatibility for:
+The current adapter now provides:
 
 - a `pi-mono`-style English prompt baseline
 - minimal dynamic tool rendering
-- lightweight tool-aware guideline generation
+- tool-aware guidance closer to the source prompt logic
 - JSON action parsing compatible with the shared runtime
+- source-style tool envelope compatibility
 - tool alias normalization between shared-runtime and `pi-mono` naming
-- pair-based context trimming centered on turns
+- turn-oriented context trimming with more stable trailing-entry handling
+- a readonly tool surface closer to the source preset: `read/grep/find/ls`
+- deterministic prompt-builder hooks for experiment control
 - minimal runtime registry integration
 - minimal automated tests for the adapter
 
 ## 6. Stubbed / Deferred / TODO Areas
 
-The following parts remain out of scope for this first-pass migration:
+The following parts remain intentionally out of scope:
 
 ### 6.1 Native streaming tool-call protocol
 
-The source repository uses native model tool calls and streaming events. The current adapter simplifies this to a single JSON action object.
+The original repository depends on a native streaming tool-call / assistant-content protocol. The adapter still runs on the shared runtime's single-action loop and does not recreate that protocol.
 
-A higher-fidelity migration would require either:
+### 6.2 `AgentSession`-level state systems
 
-- extending runtime action semantics
-- or adding a more sophisticated bridge for native tool-call transcripts
+The following source systems are still not migrated:
 
-### 6.2 Custom message system
-
-The source repository supports multiple custom `AgentMessage` variants, including:
-
-- `bashExecution`
-- `custom`
-- `branchSummary`
-- `compactionSummary`
-
-These have not yet been mapped onto the runtime `ContextEntry` abstraction.
-
-### 6.3 Compaction and branch summary
-
-The following source capabilities were not migrated:
-
-- conversation compaction
+- compaction summaries
 - branch summaries
-- overflow recovery
-- summary generation
+- steering / follow-up queues
+- retry / overflow recovery logic
+- extension runner / skill / resource loader plumbing
+- UI-only message filtering and session persistence
 
-These may later need to become a stronger `ContextStrategy` or a dedicated compatibility layer.
+### 6.3 Source prompt augmentation layers
 
-### 6.4 Session / extension / skill / resource loader stack
+The adapter preserves only the stable prompt skeleton, not the full prompt assembly stack. It still does not port:
 
-The following higher-level subsystems were not migrated:
+- docs-path injection
+- context file injection
+- skills sections
+- extension-appended prompt fragments
+
+## 7. Current Assessment
+
+From the perspective of modular runtime research, the adapter is now in a better state than the initial landing:
+
+- the prompt variable is closer to the source algorithm
+- the tool variable is closer to the source readonly preset
+- the context variable is less brittle
+- session / UI / streaming behavior is still intentionally kept outside the shared core
+
+So the correct framing is:
+
+- this is still not a full `pi-mono` port
+- but it is now a more faithful minimal skeleton for PromptBuilder / ActionParser / ContextStrategy / ToolSpec experiments
 
 - `AgentSession`
 - extension runtime
@@ -324,24 +332,27 @@ The current prompt builder preserves tone, structure, and key constraints, but d
 
 The following validation steps were executed:
 
-1. `npm install` inside `runtime/`
-2. `npm run build`
-3. `npm test`
+1. `npm test` inside `runtime/`
+2. targeted `pi-mono` adapter test expansion
+3. source-to-adapter fidelity checks against prompt / parser / readonly preset / context behavior
 
 Validation result:
 
-- build passed
 - tests passed
-- 10 tests passed in total
-- the new `pi-mono` adapter tests passed as part of that run
+- the repository test suite currently passes at `79/79`
+- the `pi-mono` adapter tests cover both the initial skeleton and the later fidelity-correction pass
+- `npm run build` is currently not a clean signal for `pi-mono` alone because the workspace still contains unrelated adapter-side TypeScript issues
 
 The added tests cover:
 
 - stable adapter name export
 - fenced JSON parsing
+- source-style tool envelope compatibility
 - tool alias normalization
-- prompt builder inclusion of task / tools / JSON contract
+- prompt builder inclusion of task / tools / JSON contract / working directory
+- readonly exploration guidance
 - context strategy preservation of assistant/tool pairs
+- stable handling of trailing non-paired entries
 - expected tool preset names
 
 ## 8. Risk and Deviation Notes
@@ -354,25 +365,26 @@ The current result should be described as a `pi-mono` compatibility adapter, not
 
 The adapter assumes a single JSON action response, which is a meaningful simplification relative to the source behavior. That should be treated as an experiment configuration difference.
 
-### 8.3 Readonly preset is still narrow
+### 8.3 Session and streaming behavior remain out of scope
 
-`pi_mono_readonly` is currently minimal and does not yet fully cover the source repo's exploration flow.
+Even though `pi_mono_readonly` has now been restored to `read + grep + find + ls`, the source repository's session-level and streaming behavior is still not ported. The adapter should therefore be treated as a modular research target, not as a full behavioral proxy of the source runtime.
 
 ## 9. Recommended Next Steps
 
 Recommended follow-up sequence:
 
-1. add a richer exploration preset aligned with `grep/find/ls`
-2. introduce message compatibility for summary / compaction-derived context entries
-3. evaluate whether runtime should support a more native tool-call action protocol for better fidelity
-4. add fixture-based comparisons between source prompt/parser behavior and adapter output
-5. only if needed, phase in session / extension / skill systems later
+1. add fixture-based comparisons between source prompt/parser/readonly preset behavior and adapter output
+2. introduce message compatibility for summary / compaction-derived context entries if the research question needs it
+3. evaluate whether runtime should support a more native tool-call transcript bridge for better fidelity
+4. only if the study depends on session behavior, phase in `AgentSession`-level compatibility later
+5. keep the current modular prompt/context/parser/tool split instead of collapsing back into a source-runtime-shaped port
 
 ## 10. Current Status Summary
 
-This migration pass should be considered:
+The current `pi-mono` migration should be described as:
 
-- skeleton complete
-- full compatibility not yet complete
+- minimal skeleton complete
+- one meaningful fidelity-correction pass completed
+- full session / streaming compatibility still deferred
 
-The current adapter is enough to make `pi-mono` available as an isolated migration target inside the shared runtime, with buildable, testable, and extendable foundations for later work.
+The adapter is now strong enough to serve as an isolated PromptBuilder / ActionParser / ContextStrategy / ToolSpec research target inside the shared runtime, while remaining explicitly short of a full source-runtime port.

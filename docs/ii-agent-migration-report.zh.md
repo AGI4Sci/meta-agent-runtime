@@ -1,259 +1,183 @@
 # ii-agent 迁移报告
 
-## 1. 背景
+## 1. 当前状态
 
-本次工作的目标，是将已有 `ii-agent` 的最小运行单元抽取并迁移到 `meta-agent-runtime` 的共享框架中，满足以下约束：
+`ii-agent` 已经完成从“最小可跑骨架”到“研究友好的兼容 adapter”的第一轮收敛，当前代码位于：
 
-- 遵守当前仓库设计文档与迁移规范
-- `runtime` 内部保持英文 prompt 单轨
-- 文档层保持中英文分离
-- agent-specific 代码优先放在 `packages/agents/ii-agent/`
-- 只做必要的 runtime registry 接入
-- 不修改其他 agent 目录
-- 优先交付“最小可运行骨架”
+- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src)
 
-本次迁移工作目录：
+当前状态可以概括为：
 
-- `/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent`
+**`ii-agent` 已可在 shared runtime 中稳定运行，并且其 prompt / parser / context / tool preset 已经对齐到更接近原始 `ii-agent` 的行为契约，但仍未完全复刻原项目的 controller、event、provider-native function calling 和长程压缩语义。**
 
-参考源仓库：
+## 2. 迁移目标与边界
 
-- `/Applications/workspace/ailab/research/code-agent/ii-agent`
+本次迁移以 [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/agent_runtime_design_raw.md`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/agent_runtime_design_raw.md) 为设计边界，以源仓库 [`/Applications/workspace/ailab/research/code-agent/ii-agent`](/Applications/workspace/ailab/research/code-agent/ii-agent) 为行为参考，目标是：
 
-工作分支：
+- 将 `ii-agent` 的最小运行单元抽取到 shared runtime
+- 保持 `runtime/` agent-agnostic
+- 将 agent-specific 逻辑限制在 `packages/agents/ii-agent/`
+- 优先保留可研究、可消融的模块边界
+- 不为了“看起来能跑”而明显偏离原始 agent 的关键算法语义
 
-- `codex/migrate-ii-agent`
+本次迁移不追求一次性复刻整个 `ii-agent` 系统，尤其不把以下复杂控制层逻辑直接塞进 runtime core：
 
-## 2. 迁移前阅读与约束确认
-
-本次迁移前，先阅读并确认了目标仓库中的以下文档：
-
-- [`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/agent_runtime_design.md`](/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/agent_runtime_design.md)
-- [`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/docs/migration.zh.md`](/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/docs/migration.zh.md)
-- [`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/README.md`](/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/README.md)
-
-从上述文档中确认了以下关键约束：
-
-- `runtime/` 必须保持 agent-agnostic
-- agent-specific 行为应进入 `packages/agents/<agent-name>/`
-- 核心可插拔模块是 `PromptBuilder`、`ActionParser`、`ContextStrategy`、`ToolSpec`
-- runtime 内 prompt、tool description 统一用英文
-- 迁移优先做兼容层，而不是把原 agent 全部运行时语义直接塞入核心 loop
+- 数据库 run 生命周期
+- event stream / realtime event
+- interruption handling
+- MCP 加载与外部工具生态
+- controller 级并发 / batch tool execution
 
 ## 3. 参考源仓库分析
 
-### 3.1 查看过的关键文件
-
-为识别 `ii-agent` 的最小运行单元，本次重点阅读了以下源码：
+### 3.1 重点查看过的文件
 
 - [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/agents/function_call.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/agents/function_call.py)
 - [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/controller/agent_controller.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/controller/agent_controller.py)
 - [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/controller/state.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/controller/state.py)
-- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/llm/base.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/llm/base.py)
-- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/llm/context_manager/base.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/llm/context_manager/base.py)
 - [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/llm/context_manager/llm_compact.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/llm/context_manager/llm_compact.py)
 - [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/prompts/agent_prompts.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/prompts/agent_prompts.py)
 - [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/prompts/system_prompt.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/prompts/system_prompt.py)
-- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/controller/tool_manager.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_agent/controller/tool_manager.py)
 - [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/base.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/base.py)
-- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/manager.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/manager.py)
+- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/shell/shell_run_command.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/shell/shell_run_command.py)
+- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/file_system/file_read_tool.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/file_system/file_read_tool.py)
+- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/file_system/file_write_tool.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/file_system/file_write_tool.py)
+- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/file_system/file_edit_tool.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/file_system/file_edit_tool.py)
+- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/file_system/grep_tool.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/file_system/grep_tool.py)
+- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/productivity/todo_write_tool.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/productivity/todo_write_tool.py)
+- [`/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/productivity/todo_read_tool.py`](/Applications/workspace/ailab/research/code-agent/ii-agent/src/ii_tool/tools/productivity/todo_read_tool.py)
 
-### 3.2 识别出的最小运行骨架
+### 3.2 从源仓库识别出的关键行为
 
-从参考仓库中识别出的最小运行链路如下：
+迁移过程中确认了原始 `ii-agent` 的几个关键算法语义：
 
-1. 用户输入进入 `State`
-2. `FunctionCallAgent` 使用：
-   - `messages=state.get_messages_for_llm()`
-   - `system_prompt=config.system_prompt`
-   - `tools=[tool.get_tool_params() for tool in tools]`
-3. LLM 返回：
-   - 文本块
-   - tool call 块
-4. `AgentController` 将 assistant 响应写回 history
-5. `AgentController` 提取 pending tool calls
-6. `AgentToolManager` 按工具名执行工具
-7. tool result 再写回 history
-8. 重复 loop，直到没有工具调用，或用户中断，或达到 turn 上限
+- 主 loop 是 `messages + system_prompt + tools` 驱动的迭代 agent loop
+- 模型原生输出里可以包含 text block 和 tool call block
+- 没有 pending tool call 时，controller 直接视为任务结束
+- `TodoWrite` / `TodoRead` 是 coding agent 工作流中的重要组成部分，不只是可有可无的附加工具
+- `LLMCompact` 在压缩上下文时会显式保留 todo 状态
+- prompt 虽然很大，但 coding 行为上最关键的是：先搜集信息、频繁更新 todo、逐步验证
 
-### 3.3 本次迁移所抽取的核心能力
+这些点里，最容易在“最小可跑迁移”中被弱化的是：
 
-本次迁移只聚焦下列共享 runtime 可表达的部分：
+- 工具名与参数结构
+- “无工具调用即可完成”的完成语义
+- todo 状态在 prompt / context 中的持续保留
 
-- prompt 构建
-- action 解析
-- context 裁剪
-- tool schema / tool name 映射
-- 最小共享 runtime 接入
+## 4. 当前实现与实际文件
 
-### 3.4 本次没有直接迁移的能力
+### 4.1 Adapter 入口
 
-以下能力在原仓库中存在，但不属于本次最小骨架迁移范围：
+- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/index.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/index.ts)
 
-- 事件流与实时事件发布
-- 数据库存储与 run 状态管理
-- 用户中断检查
-- 原生 provider function calling 细节
-- 多工具串/并行调度语义
-- 压缩总结中的 todo 保留与 LLM 摘要
-- 多 agent type 的大系统 prompt 拼装逻辑
-- MCP 加载与完整工具生态
+导出：
 
-## 4. 迁移设计决策
+- `IIAgentPromptBuilder`
+- `IIAgentActionParser`
+- `IIAgentContextStrategy`
+- `createIIAgentToolPreset`
+- `iiAgentToolPreset`
+- todo 状态 helper
 
-### 4.1 总体策略
+### 4.2 PromptBuilder
 
-采用“兼容层优先”的迁移策略，而不是强行复刻整个 `ii-agent` 运行时：
+- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/promptBuilder.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/promptBuilder.ts)
+- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/constants.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/constants.ts)
 
-- 在 `packages/agents/ii-agent/` 中实现 ii-agent adapter
-- 通过 registry 将其注册进共享 runtime
-- 让 ii-agent 先能在共享 loop 中完成基本 tool-use + finish 闭环
-- 对原仓库复杂能力用 TODO 明确标注，避免一次迁移过深
+当前已实现：
 
-### 4.2 PromptBuilder 策略
+- runtime 内保持英文 prompt 单轨
+- 注入 `Workspace`、`Operating System`、`Today`
+- 注入任务、工具列表、历史记录
+- 对非平凡任务显式鼓励使用 `TodoWrite`
+- 提示先搜索 / 读取再修改
+- 在存在 todo 快照时注入 `<preserved_todo_state>`
+- 允许两种完成路径：
+  - `finish`
+  - 直接输出最终文本，由 parser 兼容映射到 `finish`
 
-原始 `ii-agent` 的 prompt 体系非常大，包含：
+### 4.3 ActionParser
 
-- 通用工程任务规范
-- todo 管理规范
-- 浏览器与媒体规范
-- 子代理委派规范
-- 各类 agent type specialized instructions
+- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/actionParser.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/actionParser.ts)
 
-共享 runtime 当前并不适合直接承载整套复杂 prompt 体系，因此本次只抽取最小英文骨架：
+当前支持：
 
-- 强调真实代码工作区
-- 强调先收集信息再行动
-- 强调使用工具而非猜测
-- 规定输出一个 JSON action
-- 任务完成时必须调用 `finish`
+- `{name, args}`
+- `{tool, input}`
+- `{tool_name, tool_input}`
+- `{function: {name, arguments}}`
+- fenced JSON
+- 非 JSON 的 plain text completion 自动映射为 runtime `finish`
 
-这满足了“runtime 内 prompt 英文单轨”的要求。
+这一点是本次修正的关键，因为它把 shared runtime 的结构性 `finish` 契约，与源项目“没有 pending tool call 就结束”的语义桥接起来了。
 
-### 4.3 ActionParser 策略
+### 4.4 ContextStrategy
 
-原始 `ii-agent` 更偏向 provider-native function calling 返回结构，而共享 runtime 当前是“文本 -> parser -> Action”模式。
+- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/contextStrategy.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/contextStrategy.ts)
 
-因此本次实现了一个文本兼容层，支持以下三类 action 载荷：
+当前不是简单的 sliding window，而是：
 
-- `{"name":"Tool","args":{...}}`
-- `{"tool":"Tool","input":{...}}`
-- `{"tool_name":"Tool","tool_input":{...}}`
+- 基于近似 token budget 裁剪
+- 优先保留最近历史
+- 额外保留最近的 todo 快照
+- 返回新 `Context` 对象，不做副作用更新
 
-同时支持 fenced JSON 提取，方便兼容“模型输出代码块包裹 JSON”的常见情况。
+这虽然还不是原始 `LLMCompact`，但已经把其最关键的“todo 不能被压掉”的语义保住了。
 
-### 4.4 ContextStrategy 策略
+### 4.5 ToolSpec 映射
 
-原始 `ii-agent` 的 context 管理较复杂，尤其是：
+- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/toolPreset.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/toolPreset.ts)
 
-- token budget 控制
-- tool output token 估算
-- image token 估算
-- 超预算后的 LLM 压缩摘要
-- TodoWrite 状态保留
+当前 tool preset 不再只是 runtime 工具的重命名别名，而是显式构造了更接近原始 `ii-agent` 的工具面：
 
-本次不直接迁移这套复杂逻辑，而是实现了最小 recent-history 保留策略：
+- `Bash`
+- `Read`
+- `Write`
+- `Edit`
+- `Grep`
+- `TodoWrite`
+- `TodoRead`
 
-- 按近似 token 估算截断
-- 从最新 entry 开始向前保留
-- 至少保留最新上下文
+其中已经对齐的关键点包括：
 
-这使其可以在共享 runtime 中先工作起来，同时为未来接入更强摘要策略留出接口位置。
+- 工具名贴近源仓库
+- 参数字段名贴近源仓库，例如 `file_path`、`old_string`、`replace_all`、`pattern`
+- `TodoWrite` / `TodoRead` 引入了最小 session-local todo 状态
+- 通过 `createIIAgentToolPreset()` 每次 run 创建新工具实例，避免状态跨 run 泄漏
 
-### 4.5 ToolSpec 映射策略
+### 4.6 Todo 协议模块
 
-原始 `ii-agent` 有自己的工具命名与 schema 组织方式，例如：
+- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/todoState.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/todoState.ts)
 
-- `ShellRunCommand`
-- `FileRead`
-- `FileWrite`
-- `FileEdit`
-- 以及大量 web/browser/media/productivity tools
+这是后续为“研究友好性”新增的收敛模块，用来避免 todo 协议散落在多个文件里。当前收口了：
 
-共享 runtime 已经存在一组基础工具：
+- `TodoItem`
+- `formatTodos()`
+- `normalizeTodos()`
+- `isTodoSnapshotEntry()`
+- `findLatestTodoSnapshot()`
+- `findLatestTodoSnapshotIndex()`
 
-- `bash`
-- `file_read`
-- `file_write`
-- `file_edit`
-- `search`
+这样后面如果要单独替换 `PromptBuilder`、`ContextStrategy` 或 todo tools，就不会把实验变量埋进字符串前缀和重复逻辑里。
 
-本次采用 alias 映射，而不是重写工具实现：
+### 4.7 Runtime registry 接入
 
-- 保留 runtime 现有 `call` / `interpreter`
-- 仅把对外暴露给 ii-agent prompt/parser 的工具名字改成 ii-agent 风格
-- 形成最小 `ii_agent` tool preset
+- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/runtime/src/server/agentRegistry.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/runtime/src/server/agentRegistry.ts)
 
-## 5. 本次实际修改
+当前接入方式：
 
-### 5.1 新增文件
+- `prompt_builder = ii_agent`
+- `action_parser = ii_agent`
+- `context_strategy = ii_agent`
+- `tools = ii_agent`
 
-新增了以下 ii-agent 适配文件：
+且 `tools` 通过 `createIIAgentToolPreset()` 按需创建 fresh preset，而不是共享单例数组。
 
-- [`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/packages/agents/ii-agent/src/constants.ts`](/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/packages/agents/ii-agent/src/constants.ts)
-- [`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/packages/agents/ii-agent/src/promptBuilder.ts`](/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/packages/agents/ii-agent/src/promptBuilder.ts)
-- [`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/packages/agents/ii-agent/src/actionParser.ts`](/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/packages/agents/ii-agent/src/actionParser.ts)
-- [`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/packages/agents/ii-agent/src/contextStrategy.ts`](/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/packages/agents/ii-agent/src/contextStrategy.ts)
-- [`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/packages/agents/ii-agent/src/toolPreset.ts`](/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/packages/agents/ii-agent/src/toolPreset.ts)
-- [`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/packages/agents/ii-agent/src/index.ts`](/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/packages/agents/ii-agent/src/index.ts)
+## 5. 迁移中发现并已修正的偏移
 
-新增测试文件：
+### 5.1 工具名与工具参数漂移
 
-- [`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/runtime/tests/iiAgentAdapter.test.ts`](/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/runtime/tests/iiAgentAdapter.test.ts)
-
-### 5.2 修改文件
-
-修改了以下共享 runtime 文件以完成必要接入：
-
-- [`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/runtime/src/server/registry.ts`](/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/runtime/src/server/registry.ts)
-- [`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/runtime/src/server/schema.ts`](/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/runtime/src/server/schema.ts)
-- [`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/runtime/tsconfig.json`](/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/runtime/tsconfig.json)
-- [`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/runtime/package.json`](/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/runtime/package.json)
-
-## 6. 已完成迁移的能力
-
-### 6.1 PromptBuilder
-
-已完成最小版 `IIAgentPromptBuilder`，具备以下特征：
-
-- 英文 system prompt
-- 注入任务内容
-- 注入工具列表及 schema
-- 注入上下文历史
-- 强约束模型返回单个 JSON action
-
-当前实现位置：
-
-- [`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/packages/agents/ii-agent/src/promptBuilder.ts`](/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/packages/agents/ii-agent/src/promptBuilder.ts)
-
-### 6.2 ActionParser
-
-已完成 `IIAgentActionParser`，支持：
-
-- 标准 `{name,args}` 形式
-- ii-agent 风格 `{tool_name,tool_input}` 形式
-- 兼容 `{tool,input}` 形式
-- 从 fenced code block 中提取 JSON
-
-当前实现位置：
-
-- [`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/packages/agents/ii-agent/src/actionParser.ts`](/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/packages/agents/ii-agent/src/actionParser.ts)
-
-### 6.3 ContextStrategy
-
-已完成 `IIAgentContextStrategy`，支持：
-
-- 基于近似 token 的 history 裁剪
-- 优先保留最近上下文
-- 保留 `task`
-
-当前实现位置：
-
-- [`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/packages/agents/ii-agent/src/contextStrategy.ts`](/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/packages/agents/ii-agent/src/contextStrategy.ts)
-
-### 6.4 ToolSpec 映射
-
-已完成最小 `ii_agent` tool preset，当前包含：
+最初迁移版本使用了更偏 shared runtime 的别名，例如：
 
 - `ShellRunCommand`
 - `FileRead`
@@ -261,255 +185,161 @@
 - `FileEdit`
 - `SearchCode`
 
-底层仍复用 runtime 现有工具实现。
+这虽然可跑，但对原始 `ii-agent` 的工具语义并不忠实。当前已经修正为更接近源仓库的：
 
-当前实现位置：
+- `Bash`
+- `Read`
+- `Write`
+- `Edit`
+- `Grep`
+- `TodoWrite`
+- `TodoRead`
 
-- [`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/packages/agents/ii-agent/src/toolPreset.ts`](/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/packages/agents/ii-agent/src/toolPreset.ts)
+### 5.2 完成语义漂移
 
-### 6.5 Runtime registry 接入
+最初迁移版本要求模型必须显式调用 `finish`。
 
-已完成以下最小接入：
+这和 shared runtime 的设计契约一致，但和原始 `ii-agent` 的 controller 语义并不完全一致，因为源项目在“没有 pending tool call”时就会直接结束。当前已通过 parser 兼容层修正：
 
-- `prompt_builder = ii_agent`
-- `action_parser = ii_agent`
-- `context_strategy = ii_agent`
-- `tools = ii_agent`
+- 如果模型输出是合法 tool action，按 action 执行
+- 如果模型输出是普通文本结论，则映射为 `finish`
 
-对应文件：
+### 5.3 Todo 状态保留漂移
 
-- [`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/runtime/src/server/registry.ts`](/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/runtime/src/server/registry.ts)
-- [`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/runtime/src/server/schema.ts`](/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/runtime/src/server/schema.ts)
+最初迁移版本没有保留 `TodoWrite` / `TodoRead`，也没有保留 todo 快照。
 
-## 7. 未完成项与 TODO
+这会导致和源项目相比，长任务时上下文策略明显失真。当前已修正为：
 
-以下内容尚未迁移，当前视为后续工作项：
+- tool preset 包含 `TodoWrite` / `TodoRead`
+- todo 状态有独立 helper 模块
+- prompt 可以回灌最近 todo 状态
+- context trim 会优先保留最近 todo 快照
 
-### 7.1 Prompt 语义完整性
+## 6. 当前已对齐的内容
 
-当前 PromptBuilder 只保留最小行为约束，未迁移：
+从 shared runtime 研究平台的角度看，当前 `ii-agent` 已对齐这些关键点：
 
-- TodoWrite 使用规范
-- browser/media/researcher/codex 等专门规则
-- 多 agent type specialized instructions
-- 大量工作流级提示模板
+- adapter 代码都放在 `packages/agents/ii-agent/`
+- runtime core 没被 agent-specific 逻辑污染
+- `PromptBuilder`、`ActionParser`、`ContextStrategy`、`ToolSpec` 边界清晰
+- prompt 保持英文单轨
+- 文档保持中英文分离
+- 对源项目的关键 coding agent 行为有了最小高保真兼容：
+  - 先收集信息
+  - 复杂任务用 todo
+  - 工具结果回写上下文
+  - 无工具调用可视为完成
+  - todo 状态不能轻易被裁掉
 
-TODO：
+## 7. 仍未完成的部分
 
-- 评估是否需要将 ii-agent prompt 进一步拆成“稳定核心层 + 可选 profile 层”
-- 仅在共享 runtime 能稳定容纳时逐步补充
+以下内容仍然是 stub / TODO，不应误认为已经高保真迁移完成：
 
-### 7.2 Provider-native function calling
+### 7.1 Provider-native function calling
 
-当前是“文本 JSON action”兼容层，不是完整 function calling 复刻。
+当前仍是 shared runtime 的：
 
-TODO：
+- 文本 prompt
+- 文本 parser
+- runtime `Action`
 
-- 如后续实验需要 apples-to-apples 对比 provider-native tool calling，可考虑为 runtime 增加更贴近 provider 调用语义的 parser / llm adapter
+而不是真正 provider-native tool block end-to-end 复刻。
 
-### 7.3 Context 压缩
+### 7.2 Controller / orchestration 层
 
 尚未迁移：
 
+- `AgentController`
+- event stream
+- interruption handling
+- run status 生命周期
+- 多工具批量执行
+- tool confirmation
+
+### 7.3 长程上下文压缩
+
+尚未迁移完整的：
+
 - `LLMCompact`
 - summary prompt
-- TodoWrite 状态保留
-- image/tool output 的精细 token 估算
+- LLM 驱动摘要
+- image-aware token 估算
+- tool-output-aware 精细压缩
 
-TODO：
+当前仅迁移了 todo 保留这一条最关键行为。
 
-- 如后续需要长程任务对比，应为 ii-agent adapter 补一个更接近原仓库的 summarization strategy
+### 7.4 完整工具生态
 
-### 7.4 Tool 生态
-
-当前只迁移了最小骨架所需工具映射，未覆盖：
+尚未迁移：
 
 - browser tools
 - web tools
 - media tools
-- todo tools
-- message user
-- mcp tools
+- `message_user`
 - sub-agent tools
+- MCP tools
 
-TODO：
+## 8. 研究视角下的当前评价
 
-- 按实验或任务需要逐步扩展 `ii_agent` tool preset
-- 仅在通用 runtime 能承载时引入更复杂工具
+如果从“方便模块化研究”的角度评价，当前版本已经明显优于最初的最小骨架，原因是：
 
-### 7.5 Controller 级语义
+- 关键适配逻辑不再埋在 runtime core
+- 工具协议更接近源项目
+- todo 语义被显式抽成共享 helper，而不是散落字符串约定
+- 可以更干净地做以下消融：
+  - 换 prompt，不换 parser
+  - 换 context strategy，不换 todo tool
+  - 换 tool preset，不换 prompt
 
-尚未迁移：
+但如果目标变成“严格 apples-to-apples 复现原项目端到端系统行为”，当前还不够。
 
-- interruption handling
-- event stream
-- tool batch concurrency
-- run status 生命周期
-- assistant/tool event replay
+## 9. 验证
 
-TODO：
+### 9.1 相关测试文件
 
-- 若未来需要更高保真迁移，应在 runtime 外围增加 adapter-specific orchestration layer，而不是污染核心 loop
+- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/runtime/tests/iiAgentAdapter.test.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/runtime/tests/iiAgentAdapter.test.ts)
 
-## 8. 兼容性说明
+当前覆盖：
 
-### 8.1 与原始 ii-agent 的一致部分
+- parser 解析 ii-agent 风格 envelope
+- fenced JSON
+- plain text completion 到 `finish`
+- prompt 中的工具和 history 注入
+- context 中 todo 快照保留
+- todo helper 的共享协议
+- 最小 tool loop 闭环
+- tool preset 工具名集合
 
-当前迁移结果与原始 ii-agent 在以下层面保持了结构一致性：
+### 9.2 实际执行过的验证
 
-- 都是 task + history + tools 驱动的迭代 loop
-- 都允许模型输出工具调用
-- 都将工具结果写回上下文
-- 都通过 finish 或无后续动作结束任务
-
-### 8.2 与原始 ii-agent 的差异
-
-当前迁移结果与原始 ii-agent 存在以下明确差异：
-
-- 不依赖 provider 原生 tool call block
-- 不包含数据库、事件流、中断等控制层
-- 不包含原始复杂 prompt 体系
-- 不包含长程对话压缩摘要
-- 不包含完整工具生态
-
-### 8.3 差异的原因
-
-这些差异是有意为之，主要原因是：
-
-- 当前目标是迁移“最小可运行骨架”
-- 设计文档要求 runtime 保持 agent-agnostic
-- 复杂控制层逻辑不适合直接塞进共享 runtime
-- 先交付可运行且可测试的 adapter，能降低后续增量迁移成本
-
-## 9. 验证与结果
-
-### 9.1 新增测试
-
-新增测试文件：
-
-- [`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/runtime/tests/iiAgentAdapter.test.ts`](/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/runtime/tests/iiAgentAdapter.test.ts)
-
-覆盖点包括：
-
-- parser 能解析 ii-agent 风格 action envelope
-- parser 能解析 fenced JSON
-- prompt builder 能渲染 task、tools、history
-- context strategy 能按预算保留最近历史
-- `ii_agent` tool preset 能在共享 runtime 中跑通最小闭环
-
-### 9.2 构建与测试命令
-
-实际执行过：
+执行过：
 
 ```bash
-cd /Applications/workspace/ailab/research/code-agent/meta-agent-runtime-ii-agent/runtime
-npm install
+cd /Applications/workspace/ailab/research/code-agent/meta_agent_runtime/runtime
 npm run build
-npm test
+node --test dist/runtime/tests/iiAgentAdapter.test.js
+node --test dist/runtime/tests/serverContract.test.js dist/runtime/tests/runtimeCoreAlignment.test.js
 ```
 
-### 9.3 验证结果
+结果：
 
-结果如下：
+- `npm run build` 通过
+- `iiAgentAdapter.test.js` 通过
+- `serverContract.test.js` 通过
+- `runtimeCoreAlignment.test.js` 通过
 
-- `npm install` 成功
-- `npm run build` 成功
-- `npm test` 成功
-- 测试总计 `10/10` 通过
+补充说明：
 
-## 10. 遇到的问题与处理
+- 在继续整理文档时，`npx tsc -p tsconfig.json --pretty false` 还暴露了一个与 `ii-agent` 无关的既有 build 问题：[`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/openhands/src/index.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/openhands/src/index.ts) 重复导出 `createOpenHandsTools`。这不是 `ii-agent` 迁移本身造成的漂移，因此本报告只记录，不在此处修复。
 
-### 10.1 TypeScript 构建边界
+## 10. 当前结论
 
-问题：
+当前 `ii-agent` 的迁移状态，应定义为：
 
-- `runtime/tsconfig.json` 原本只覆盖 `runtime` 目录
-- 新增 `packages/agents/ii-agent` 后，构建时无法将 adapter 纳入同一编译图
-
-处理：
-
-- 将 `rootDir` 调整为上级目录
-- 将 `../packages/**/*.ts` 纳入 `include`
-
-### 10.2 构建产物路径变化
-
-问题：
-
-- 调整 `rootDir` 后，`dist` 目录结构发生变化
-
-处理：
-
-- 同步更新 `runtime/package.json` 中的 `start` 与 `test` 脚本路径，使其指向新的 `dist/runtime/...` 位置
-
-### 10.3 ContextStrategy 测试阈值
-
-问题：
-
-- 初版测试中的 token budget 过宽，导致裁剪行为没有触发
-
-处理：
-
-- 收紧测试阈值，确保测试真正覆盖“保留最新上下文”的行为
-
-## 11. 当前迁移状态结论
-
-本次迁移已经完成以下目标：
-
-- 完成 `ii-agent` 最小可运行骨架迁移
-- 完成 `PromptBuilder`、`ActionParser`、`ContextStrategy`、`ToolSpec` 映射
-- 完成必要的 runtime registry 接入
-- 完成最小测试补充
-- 完成 build/test 验证
-
-当前状态可定义为：
-
-**“ii-agent 已进入共享 runtime，可作为最小兼容 adapter 运行，但尚未达到原始仓库高保真行为复刻。”**
-
-## 12. 后续建议
-
-建议后续按以下顺序继续推进：
-
-1. 先补 `TodoWrite` / `MessageUser` / 更多文件与搜索类工具映射
-2. 再补更接近原仓库的 context compression / summarization
-3. 如实验确实需要，再评估 provider-native function calling 兼容路径
-4. 最后再考虑中断、事件流、批量调度等控制层语义
-
-这样可以保证：
-
-- 每一步都可验证
-- 不污染共享 runtime 主循环
-- 不影响其他 agent 的并行迁移工作
-- 逐步提高 ii-agent 适配器保真度
-
-## 13. 本次变更文件清单
-
-### 新增
-
-- `packages/agents/ii-agent/src/constants.ts`
-- `packages/agents/ii-agent/src/promptBuilder.ts`
-- `packages/agents/ii-agent/src/actionParser.ts`
-- `packages/agents/ii-agent/src/contextStrategy.ts`
-- `packages/agents/ii-agent/src/toolPreset.ts`
-- `packages/agents/ii-agent/src/index.ts`
-- `runtime/tests/iiAgentAdapter.test.ts`
-- `docs/ii-agent-migration-report.zh.md`
-
-### 修改
-
-- `runtime/src/server/registry.ts`
-- `runtime/src/server/schema.ts`
-- `runtime/tsconfig.json`
-- `runtime/package.json`
-
-## 14. 总结
-
-本次迁移没有追求“一次性搬完整个 ii-agent”，而是严格按共享 runtime 的设计边界，提炼出一个可运行、可测试、可继续扩展的 adapter 骨架。
+**“已完成研究友好的兼容层迁移，可作为 shared runtime 中的独立 adapter 参与 prompt / parser / context / tool preset 维度的受控实验；但仍不是原始 `ii-agent` controller 级行为的完整复刻。”**
 
 这意味着：
 
-- 现在已经有了 `ii-agent` 在 `meta-agent-runtime` 中的落点
-- 后续增强可以围绕这个 adapter 增量进行
-- 当前 runtime 仍保持 agent-agnostic
-- 其他 agent 的迁移目录没有被破坏
-
-如果后续需要继续推进，本报告可以作为下一轮迁移的状态基线。
+- 对 shared runtime 研究平台来说，`ii-agent` 已经有可用落点
+- 对迁移正确性来说，关键偏移已经修正到合理范围
+- 对高保真复现来说，后续仍需独立推进 controller / provider / compression 三条线

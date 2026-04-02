@@ -86,6 +86,7 @@ Because the shared runtime currently expects a much smaller `Action` shape, this
 - `{"name":"...","args":{...}}`
 - `{"tool":"...","arguments":{...}}`
 - `{"function":{"name":"...","arguments":{...}}}`
+- `{"function":{"name":"...","arguments":"{\"k\":\"v\"}"}}`
 - fenced JSON blocks
 
 This is intentionally a compatibility layer, not a full reproduction of Goose's native tool-call pipeline.
@@ -102,7 +103,7 @@ The real Goose agent includes much more than simple truncation:
 
 Those behaviors are tightly coupled to Goose's own provider and message architecture, so this round only migrated a minimal context strategy:
 
-- retain the most recent entries
+- retain recent history approximately within a token budget
 - keep the shared runtime loop functional
 
 ### 4.4 Tool surface
@@ -154,7 +155,7 @@ New files:
 It includes:
 
 - an English Goose persona
-- an hour-level UTC timestamp
+- an hour-level fixed timestamp closer to Goose's `PromptManager`
 - developer extension instructions
 - tool efficiency guidance
 - a JSON action output contract
@@ -171,6 +172,7 @@ Supported input styles:
 - raw JSON action
 - fenced JSON action
 - alias fields for tool name and arguments
+- stringified JSON inside `function.arguments`
 - finish result compatibility
 
 Its purpose is to let Goose-style prompting produce stable shared-runtime `Action` objects.
@@ -179,7 +181,7 @@ Its purpose is to let Goose-style prompting produce stable shared-runtime `Actio
 
 `packages/agents/goose/src/contextStrategy.ts` adds a lightweight `GooseContextStrategy`:
 
-- keeps the most recent 24 context entries by default
+- trims context approximately to a token budget
 - does not implement summarization or compaction
 
 This is a compatibility stub rather than a full Goose context-management port.
@@ -191,18 +193,23 @@ This is a compatibility stub rather than a full Goose context-management port.
 #### `shell`
 
 - runs with `/bin/zsh -lc`
+- supports `timeout_secs`
 - returns `stdout`, `stderr`, and `exitCode`
+- approximates Goose-style truncation for long output streams
 - maps non-zero exit status into runtime observations
 
 #### `write`
 
 - creates parent directories
 - overwrites the target file
+- returns `Created/Wrote ... (N lines)` style results
 
 #### `edit`
 
+- uses Goose-style `before/after` arguments
 - requires an exact unique match for replacement
-- errors if `old_text` is missing or ambiguous
+- supports deletion via empty `after`
+- errors if `before` is missing or ambiguous
 
 #### `tree`
 
@@ -257,11 +264,14 @@ Current coverage includes:
 
 1. `GooseActionParser` parses `name/args`
 2. `GooseActionParser` parses fenced `tool/arguments`
-3. `GoosePromptBuilder` renders Goose-style instructions
-4. `GooseContextStrategy` trims history as expected
-5. `gooseTreeTool` respects `depth` and `.gitignore`
-6. `gooseEditTool` rejects ambiguous replacements
-7. `gooseShellTool` preserves non-zero exit codes in observations
+3. `GooseActionParser` parses `function.arguments` string envelopes
+4. `GoosePromptBuilder` renders source-faithful Goose instructions
+5. `GooseContextStrategy` trims by approximate token budget
+6. `gooseTreeTool` respects `depth` and `.gitignore`
+7. `gooseEditTool` rejects ambiguous replacements
+8. `gooseEditTool` supports deletion via empty `after`
+9. `gooseShellTool` preserves non-zero exit codes in observations
+10. `gooseShellTool` supports `timeout_secs`
 
 ## 7. Capabilities Successfully Migrated
 
@@ -269,12 +279,12 @@ The following Goose capabilities are now present in the shared runtime:
 
 - minimal Goose PromptBuilder
 - minimal Goose ActionParser
-- minimal Goose ContextStrategy
+- token-budget-based Goose ContextStrategy approximation
 - minimal developer tool preset
 - runtime registry integration
 - schema integration
 - minimal tests
-- build/test validation
+- targeted adapter validation
 
 ## 8. Stubbed or Deferred Capabilities
 
@@ -338,15 +348,14 @@ For complex subsystems like compaction, approval, and provider-native tool-call 
 
 The following checks were run:
 
-- `npx tsc -p tsconfig.json --noEmit`
-- `npx tsx --test tests/*.ts`
-- `npm run build`
+- `npx tsx --test ./tests/gooseAdapter.test.ts`
+- Goose-related coverage inside `npx tsx --test ./tests/*.ts`
 
 Result:
 
-- type check passed
-- tests passed
-- build passed
+- Goose-targeted tests passed
+- Goose-related repository tests passed
+- repository-wide `tsc` and some full server paths are still affected by unrelated existing adapter issues, and should not be recorded as Goose migration failures
 
 ## 11. Current Worktree Scope
 
@@ -366,7 +375,7 @@ No other agent adapter directories were modified.
 Suggested follow-up priorities:
 
 1. add prompt/parser fixtures and compare against Goose source snapshots
-2. further align `tree` and `shell` behavior with the reference implementation
+2. extend prompt fixtures and snapshots instead of increasing adapter complexity prematurely
 3. explore a Goose-specific compaction-aware `ContextStrategy`
 4. design a cleaner mapping from Goose provider-native messages into runtime `Action/Observation`
 5. abstract approval and inspection hooks without polluting the shared runtime loop

@@ -24,6 +24,17 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function parseArgsValue(value: unknown): Record<string, unknown> {
+  if (typeof value === "string") {
+    try {
+      return asRecord(JSON.parse(value));
+    } catch {
+      return {};
+    }
+  }
+  return asRecord(value);
+}
+
 function readName(parsed: ParsedEnvelope): string | null {
   if (typeof parsed.name === "string") {
     return parsed.name;
@@ -45,13 +56,13 @@ function readName(parsed: ParsedEnvelope): string | null {
 function readArgs(parsed: ParsedEnvelope): Record<string, unknown> {
   const direct = [parsed.args, parsed.arguments, parsed.parameters].find((value) => value !== undefined);
   if (direct !== undefined) {
-    return asRecord(direct);
+    return parseArgsValue(direct);
   }
 
   const fn = asRecord(parsed.function);
   const nested = [fn.args, fn.arguments, fn.parameters].find((value) => value !== undefined);
   if (nested !== undefined) {
-    return asRecord(nested);
+    return parseArgsValue(nested);
   }
 
   if (typeof parsed.result === "string") {

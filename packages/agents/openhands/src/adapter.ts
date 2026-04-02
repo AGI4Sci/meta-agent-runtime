@@ -1,7 +1,7 @@
 import { OpenHandsContextStrategy } from "./context";
 import { OpenHandsActionParser } from "./parser";
 import { OpenHandsPromptBuilder } from "./prompt";
-import { OPENHANDS_MINIMAL_TOOLS } from "./tools";
+import { createOpenHandsTools as createOpenHandsToolsInternal } from "./tools";
 
 export const OPENHANDS_ADAPTER_NAME = "openhands";
 export const OPENHANDS_PROMPT_BUILDER = "openhands";
@@ -24,5 +24,5 @@ export function createOpenHandsContextStrategy(params: {
 }
 
 export function createOpenHandsTools() {
-  return [...OPENHANDS_MINIMAL_TOOLS];
+  return createOpenHandsToolsInternal();
 }

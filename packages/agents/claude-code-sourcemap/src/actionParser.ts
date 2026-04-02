@@ -42,9 +42,22 @@ export class ClaudeCodeSourcemapActionParser implements ActionParser {
     const jsonMatch = rawText.trim();
     if (jsonMatch.startsWith("{")) {
       try {
-        const parsed = JSON.parse(jsonMatch) as { name?: string; args?: Record<string, unknown> };
+        const parsed = JSON.parse(jsonMatch) as {
+          type?: string;
+          name?: string;
+          args?: Record<string, unknown>;
+          input?: Record<string, unknown>;
+          tool?: string;
+          arguments?: Record<string, unknown>;
+        };
+        if (parsed.type === "tool_use" && typeof parsed.name === "string" && parsed.input && typeof parsed.input === "object") {
+          return { name: parsed.name, args: parsed.input, rawText };
+        }
         if (typeof parsed.name === "string" && parsed.args && typeof parsed.args === "object") {
           return { name: parsed.name, args: parsed.args, rawText };
+        }
+        if (typeof parsed.tool === "string" && parsed.arguments && typeof parsed.arguments === "object") {
+          return { name: parsed.tool, args: parsed.arguments, rawText };
         }
       } catch {
         // fall through to the standard parse error below

@@ -22,16 +22,19 @@ export class OpenCodeContextStrategy implements ContextStrategy {
     if (omitted > 0) {
       const marker = `[Earlier OpenCode history omitted: ${omitted} entries]`;
       kept.unshift({
-        role: "tool",
+        role: "assistant",
         content: marker,
-        metadata: { omittedEntries: omitted, synthetic: true },
+        metadata: { omittedEntries: omitted, condensed: true, synthetic: true },
       });
       tokenCount += Math.ceil(marker.length / 4);
     }
 
     return {
       ...context,
-      entries: kept,
+      entries: kept.map((entry) => ({
+        ...entry,
+        metadata: { ...entry.metadata },
+      })),
       tokenCount,
     };
   }

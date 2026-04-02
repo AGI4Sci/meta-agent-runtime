@@ -5,11 +5,17 @@ export class OpenHandsContextStrategy implements ContextStrategy {
   constructor(private readonly maxTokens = 8000) {}
 
   trim(context: Context): Context {
+    const existingPrefix = context.entries[0]?.metadata.condensed === true;
+    const baseEntries = existingPrefix ? context.entries.slice(1) : [...context.entries];
+
     if (context.tokenCount <= this.maxTokens || context.entries.length <= 2) {
-      return context;
+      return {
+        ...context,
+        entries: [...context.entries],
+      };
     }
 
-    const trimmedEntries = [...context.entries];
+    const trimmedEntries = [...baseEntries];
     while (trimmedEntries.length > 2 && estimateTokens(context.task, trimmedEntries) > this.maxTokens) {
       const deleteCount = trimmedEntries.length >= 2 ? 2 : 1;
       trimmedEntries.splice(0, deleteCount);

@@ -4,14 +4,14 @@
 
 本文档记录 `claude-code-sourcemap` 从参考源仓库迁移到 `meta-agent-runtime` 共享框架的当前状态、实现范围、已完成能力、未完成能力、验证结果与后续建议。
 
-本报告聚焦“最小可运行骨架”迁移，而非一次性完整复刻源仓库全部能力。
+本报告当前反映的是“最小可运行骨架 + 一轮忠实度与研究边界校正”之后的状态，而不是第一次落地时的初版接线结果。
 
 ## 2. 迁移背景
 
 ### 2.1 目标仓库
 
-- 迁移目标仓库：`/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-claude-code-sourcemap`
-- 当前迁移分支：`codex/migrate-claude-code-sourcemap`
+- 当前目标仓库：`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime`
+- 当前工作分支：以实际本地工作分支为准
 
 ### 2.2 参考源仓库
 
@@ -101,6 +101,8 @@
 
 新增文件：
 
+- `packages/agents/claude-code-sourcemap/src/constants.ts`
+- `packages/agents/claude-code-sourcemap/src/adapter.ts`
 - `packages/agents/claude-code-sourcemap/src/promptBuilder.ts`
 - `packages/agents/claude-code-sourcemap/src/actionParser.ts`
 - `packages/agents/claude-code-sourcemap/src/contextStrategy.ts`
@@ -141,6 +143,7 @@
 - 使用 Claude Code 风格的 `<functions>` 展示工具定义
 - 定义了 `<function_calls><invoke name="...">...</invoke></function_calls>` 的输出协议
 - 明确要求通过 `finish` 收束任务
+- 将 response contract 示例、tool 名称、默认上下文窗口等 adapter 约定沉淀到 `constants.ts`
 
 设计取舍：
 
@@ -161,11 +164,14 @@
 - 兼容回退格式：
   - `<tool_call name="...">{...}</tool_call>`
   - `{"name":"...","args":{...}}`
+- 新增兼容源项目风格 JSON payload：
+  - `{"type":"tool_use","name":"...","input":{...}}`
+  - `{"tool":"...","arguments":{...}}`
 - 对非法 JSON 参数给出解析错误
 
 设计取舍：
 
-- 未实现 Anthropic 原生 `tool_use` block 级别解析
+- 尚未实现 Anthropic 原生 message block 流与多块拼装
 - 未实现流式 partial input 聚合
 - 未实现多工具块同轮输出处理
 - 当前实现聚焦“单次单工具调用”
@@ -179,7 +185,8 @@
 本次实现内容：
 
 - 默认保留最近 `12` 条上下文 entry
-- 优先保留 tool error observation，避免错误被过早裁剪
+- 保持上下文时间顺序，不做 error 优先级重排
+- 裁剪时尽量避免从 `assistant -> tool` 对中间截断
 - 在不修改 runtime 主循环的前提下，实现最小可替换 context 策略
 
 设计取舍：
@@ -198,7 +205,7 @@
 
 本次实现内容：
 
-将 runtime 现有工具包装为更接近参考源仓库的命名与参数形状：
+提供一组 adapter-local 工具包装，使工具命名、参数与返回语义更接近参考源仓库：
 
 - `Bash`
 - `Read`
@@ -206,35 +213,61 @@
 - `Edit`
 - `Grep`
 
-具体映射关系：
-
-- `Bash` -> runtime `bash`
-- `Read` -> runtime `file_read`
-- `Write` -> runtime `file_write`
-- `Edit` -> runtime `file_edit`
-- `Grep` -> runtime `search`
-
 适配内容包括：
 
-- tool name 重命名
-- description 重写为更贴近源仓库风格的英文描述
+- 保留 source-like tool name
+- description 改写为更贴近源仓库 prompt 的英文语义
 - args schema 改写为 source-like 字段名
-- 调用前做参数重映射
+- 通过 adapter 内部 wrapper 直接执行最小所需文件与 shell 行为
 
-例如：
+当前已恢复的关键语义：
 
-- `Read.file_path` -> `file_read.path`
-- `Write.file_path` -> `file_write.path`
-- `Edit.old_string/new_string` -> `file_edit.old_text/new_text`
-- `Grep.pattern` -> `search.query`
+- `Read`
+  - 支持 `file_path + offset + limit`
+  - 返回带行号内容
+- `Edit`
+  - 支持 `replace_all`
+  - 当 `old_string` 多次出现且未显式要求全量替换时，拒绝模糊单次替换
+- `Grep`
+  - 支持 `glob / type / output_mode / multiline`
+- `Bash`
+  - 保留最小 shell 执行能力，并提示优先使用专用读写搜索工具
 
 设计取舍：
 
-- 目前 `Grep` 只是最小 alias，不是源仓库完整 grep 工具语义
-- `Edit` 仍然沿用 runtime 的单次 substring replace 行为
-- `Read/Write/Edit` 还没有移植源仓库的权限、mtime、read-before-write、安全校验链路
+- 目前仍是最小兼容层，不是完整工具生态复刻
+- `Read/Write/Edit/Bash` 还没有移植源仓库的权限、mtime、read-before-write、安全校验链路
+- `Glob`、notebook、MCP、subagent 等工具尚未迁移
 
-## 6.5 Registry 接入
+## 6.5 Adapter definition 与研究边界收口
+
+实现文件：
+
+- `packages/agents/claude-code-sourcemap/src/constants.ts`
+- `packages/agents/claude-code-sourcemap/src/adapter.ts`
+- `packages/agents/claude-code-sourcemap/src/index.ts`
+
+本次实现内容：
+
+- 新增稳定导出的 adapter 常量：
+  - adapter 名称
+  - 默认 context window
+  - function-call 示例
+  - finish 示例
+  - tool 名称集合
+- 新增 `createClaudeCodeSourcemapAdapter(...)`
+  - 一次性组装 prompt builder
+  - action parser
+  - context strategy
+  - tool preset
+- 暴露 `maxContextEntries` 与 `tools` 两个常见研究旋钮，方便做 ablation 与替换实验
+
+设计意义：
+
+- 研究脚本不需要再散着 import 多个工厂函数
+- adapter 的默认基线配置被显式收口，便于后续做 apples-to-apples 对照
+- 不需要修改 runtime core，就能在 adapter 层做受控实验
+## 6.6 Registry 接入
 
 实现文件：
 
@@ -285,26 +318,31 @@
 覆盖点：
 
 - parser 能解析 `<function_calls>` 包裹的调用格式
+- parser 能兼容 `tool_use` 风格 JSON payload
 - prompt 能正确渲染 `<functions>` 与 XML contract
 - tool preset 暴露 source-like 的工具名与参数
+- adapter 级入口支持显式 context window 与自定义 tools 注入
 
 ## 8.2 执行过的验证命令
 
 在 `runtime/` 目录执行：
 
-- `npm install`
-- `npm run build`
-- `npm test`
+- `node --import tsx --test tests/claudeCodeSourcemap.test.ts`
 
 ## 8.3 验证结果
 
-- `npm run build` 通过
-- `npm test` 通过
-- 测试总数：8
-- 通过：8
+- `claude-code-sourcemap` adapter 定向测试通过
+- 测试总数：5
+- 通过：5
 - 失败：0
 
-其中包括新增的 `claude-code-sourcemap` adapter 测试。
+补充说明：
+
+- 当前仓库的全量 `npm run build` 仍可能被其他 adapter 的既有问题阻塞
+- 最近一次检查中，阻塞点来自 `packages/agents/openhands/src/index.ts` 的重复导出
+- 因此应区分：
+  - `claude-code-sourcemap` 自身 adapter 测试通过
+  - 仓库全量 TypeScript build 是否被无关问题阻塞
 
 ## 9. 未迁移能力 / 明确 TODO
 
@@ -404,13 +442,15 @@
 
 - Claude Code 风格英文 prompt 构建
 - source-like function call 解析
-- 最小上下文裁剪策略
-- 基于共享 runtime tool 的 source-like 工具映射
+- 保时序且避免截断 assistant/tool 对的上下文裁剪策略
+- 更接近源仓库参数与行为的 adapter-local 工具包装
+- adapter definition 与常量层，便于模块化研究
 - runtime registry / schema 接入
 
 当前状态可定义为：
 
 - `MVP adapter: completed`
+- `research-ready adapter boundary: completed`
 - `high-fidelity compatibility: not yet completed`
 
 ## 12. 建议的下一步
@@ -427,6 +467,8 @@
 
 新增：
 
+- `packages/agents/claude-code-sourcemap/src/constants.ts`
+- `packages/agents/claude-code-sourcemap/src/adapter.ts`
 - `packages/agents/claude-code-sourcemap/src/promptBuilder.ts`
 - `packages/agents/claude-code-sourcemap/src/actionParser.ts`
 - `packages/agents/claude-code-sourcemap/src/contextStrategy.ts`

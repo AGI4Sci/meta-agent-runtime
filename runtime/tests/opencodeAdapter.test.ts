@@ -3,10 +3,13 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { OpenCodeActionParser } from "../../packages/agents/opencode/src/actionParser";
-import { OpenCodeContextStrategy } from "../../packages/agents/opencode/src/contextStrategy";
-import { OpenCodePromptBuilder } from "../../packages/agents/opencode/src/promptBuilder";
-import { openCodeToolPreset } from "../../packages/agents/opencode/src/toolPreset";
+import {
+  OpenCodeActionParser,
+  OpenCodeContextStrategy,
+  OpenCodePromptBuilder,
+  createOpenCodeToolPreset,
+  openCodeToolPreset,
+} from "../../packages/agents/opencode/src";
 import { AgentRuntime } from "../src/core/runtime";
 import type { LLMClient } from "../src/core/interfaces";
 
@@ -15,6 +18,13 @@ test("opencode parser parses tool/input payload", () => {
   const action = parser.parse('{"tool":"read","input":{"filePath":"README.md"}}');
   assert.equal(action.name, "read");
   assert.deepEqual(action.args, { filePath: "README.md" });
+});
+
+test("opencode parser accepts fenced json and arguments alias", () => {
+  const parser = new OpenCodeActionParser();
+  const action = parser.parse('```json\n{"name":"bash","arguments":{"command":"pwd"}}\n```');
+  assert.equal(action.name, "bash");
+  assert.deepEqual(action.args, { command: "pwd" });
 });
 
 test("opencode prompt renders json action contract", () => {
@@ -28,6 +38,8 @@ test("opencode prompt renders json action contract", () => {
 
   assert.match(prompt, /"tool":"<tool-name>"/);
   assert.match(prompt, /You are OpenCode/);
+  assert.match(prompt, /Prefer specialized tools over shell/i);
+  assert.match(prompt, /Never revert user changes/i);
 });
 
 test("opencode tool preset supports read and write loop", async () => {
@@ -77,4 +89,33 @@ test("opencode tool preset supports read and write loop", async () => {
   assert.equal(result.success, true);
   assert.equal(result.terminationReason, "finish");
   assert.equal(finalContent, "rewritten\n");
+});
+
+test("opencode tool preset can be narrowed for ablation experiments", () => {
+  const preset = createOpenCodeToolPreset({ include: ["read", "write"] });
+  assert.deepEqual(
+    preset.map((tool) => tool.name),
+    ["read", "write"],
+  );
+});
+
+test("opencode context strategy returns a new context with condensed marker", () => {
+  const strategy = new OpenCodeContextStrategy(10);
+  const input = {
+    task: "short task",
+    step: 3,
+    tokenCount: 99,
+    entries: [
+      { role: "assistant" as const, content: "old assistant output", metadata: {} },
+      { role: "tool" as const, content: "old tool output", metadata: {} },
+      { role: "assistant" as const, content: "recent assistant output", metadata: {} },
+      { role: "tool" as const, content: "recent tool output", metadata: {} },
+    ],
+  };
+
+  const trimmed = strategy.trim(input);
+
+  assert.notEqual(trimmed, input);
+  assert.equal(trimmed.entries[0]?.metadata.condensed, true);
+  assert.match(trimmed.entries.at(-1)?.content ?? "", /recent tool output/);
 });

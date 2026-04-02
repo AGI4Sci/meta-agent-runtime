@@ -1,31 +1,105 @@
 # ii-agent Migration Report
 
-## Purpose
+## Status
 
-This report tracks the minimal runnable `ii-agent` adapter that has been integrated into `meta-agent-runtime`.
+`ii-agent` has moved beyond a merely runnable skeleton and is now a research-oriented compatibility adapter inside the shared runtime.
 
-The migration keeps agent-specific logic inside `packages/agents/ii-agent/` and wires only the minimal runtime registration needed for prompt, parser, context, and tool compatibility.
+Current adapter code lives under:
 
-## Scope
+- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src)
 
-- Target workspace: `/Applications/workspace/ailab/research/code-agent/meta_agent_runtime`
-- Source branch worktree: `codex/migrate-ii-agent`
-- Source repository reviewed: `/Applications/workspace/ailab/research/code-agent/ii-agent`
+The current state is:
 
-## Migrated Surface
+**The adapter is runnable, isolated, and materially closer to the original `ii-agent` coding workflow, but it is still not a full reproduction of the original controller, event, native tool-calling, or long-horizon compression stack.**
 
-- `IIAgentPromptBuilder` provides an English-only prompt contract for the shared runtime loop.
-- `IIAgentActionParser` accepts `{name,args}`, `{tool,input}`, and `{tool_name,tool_input}` payloads, including fenced JSON.
-- `IIAgentContextStrategy` keeps the newest history inside an approximate token budget.
-- `iiAgentToolPreset` remaps shared runtime tools to ii-agent-style names such as `ShellRunCommand` and `FileRead`.
+## What Is Now Aligned
 
-## Integration Notes
+- `IIAgentPromptBuilder` now carries a stronger subset of the original coding-agent rules:
+  - inspect first
+  - prefer search/read before edit
+  - use todo management for non-trivial work
+  - preserve an English-only runtime prompt track
+- `IIAgentActionParser` accepts multiple source-like envelopes:
+  - `{name,args}`
+  - `{tool,input}`
+  - `{tool_name,tool_input}`
+  - `{function:{name,arguments}}`
+  - fenced JSON
+- The parser also bridges a key semantic gap with the original project:
+  - plain-text final answers are normalized to runtime `finish`
+  - this approximates the original “no pending tool call means done” behavior
+- `IIAgentContextStrategy` no longer acts as a plain recent-history window only:
+  - it keeps the newest history within a token budget
+  - it preserves the latest todo snapshot
+- `createIIAgentToolPreset()` now exposes a more source-faithful tool surface:
+  - `Bash`
+  - `Read`
+  - `Write`
+  - `Edit`
+  - `Grep`
+  - `TodoWrite`
+  - `TodoRead`
 
-- The adapter remains isolated under `packages/agents/ii-agent/src/`.
-- Runtime wiring is now collected through the shared server registry helper rather than direct ad hoc edits in `runtime/src/server/registry.ts`.
-- This pass intentionally does not port ii-agent event streaming, persistence, MCP loading, or multi-agent orchestration semantics.
+## Research-Friendly Refinements
+
+One additional refinement was made specifically to improve modular experimentation:
+
+- todo-state conventions were extracted into a dedicated helper module:
+  - [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/todoState.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/ii-agent/src/todoState.ts)
+
+This centralizes:
+
+- todo item normalization
+- todo formatting
+- todo snapshot detection
+- latest snapshot lookup
+
+That change reduces hidden coupling between:
+
+- `PromptBuilder`
+- `ContextStrategy`
+- todo-related `ToolSpec`s
+
+which makes future ablations cleaner.
+
+## Known Non-Migrated Areas
+
+The following parts are still intentionally out of scope for the current adapter:
+
+- provider-native tool calling end-to-end
+- controller / orchestration semantics
+- interruption handling
+- event streaming
+- run persistence / status lifecycle
+- full `LLMCompact` summarization logic
+- browser, web, media, MCP, and sub-agent ecosystems
 
 ## Validation
 
-- Adapter-specific coverage lives in `runtime/tests/iiAgentAdapter.test.ts`.
-- Repository-wide validation is executed from the integration branch after all agent adapters are consolidated.
+Relevant coverage:
+
+- [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/runtime/tests/iiAgentAdapter.test.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/runtime/tests/iiAgentAdapter.test.ts)
+
+Covered behaviors include:
+
+- source-style action envelopes
+- fenced JSON
+- plain-text completion to `finish`
+- prompt rendering
+- todo snapshot preservation
+- shared todo helper semantics
+- minimal tool loop closure
+- source-faithful tool names
+
+Commands run:
+
+```bash
+cd /Applications/workspace/ailab/research/code-agent/meta_agent_runtime/runtime
+npm run build
+node --test dist/runtime/tests/iiAgentAdapter.test.js
+node --test dist/runtime/tests/serverContract.test.js dist/runtime/tests/runtimeCoreAlignment.test.js
+```
+
+## Notes
+
+- A separate pre-existing build issue still exists in [`/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/openhands/src/index.ts`](/Applications/workspace/ailab/research/code-agent/meta_agent_runtime/packages/agents/openhands/src/index.ts), where `createOpenHandsTools` is exported ambiguously. This is recorded here only as unrelated repository context; it is not part of the `ii-agent` migration itself.

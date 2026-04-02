@@ -8,9 +8,16 @@ interface OpenHandsResponse {
     name?: unknown;
     arguments?: unknown;
   };
+  tool_calls?: Array<{
+    function?: {
+      name?: unknown;
+      arguments?: unknown;
+    };
+  }>;
   name?: unknown;
   arguments?: unknown;
   args?: unknown;
+  content?: unknown;
 }
 
 export class OpenHandsActionParser implements ActionParser {
@@ -50,15 +57,44 @@ export class OpenHandsActionParser implements ActionParser {
   }
 
   private readToolName(parsed: OpenHandsResponse): string | null {
-    const candidate = parsed.tool?.name ?? parsed.name;
+    const candidate =
+      parsed.tool_calls?.[0]?.function?.name ??
+      parsed.tool?.name ??
+      parsed.name;
     return typeof candidate === "string" ? candidate : null;
   }
 
   private readArgs(parsed: OpenHandsResponse): Record<string, unknown> {
-    const candidate = parsed.tool?.arguments ?? parsed.arguments ?? parsed.args ?? {};
+    const candidate =
+      this.readToolCallArguments(parsed.tool_calls?.[0]?.function?.arguments) ??
+      parsed.tool?.arguments ??
+      parsed.arguments ??
+      parsed.args ??
+      {};
     if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
       return { ...(candidate as Record<string, unknown>) };
     }
     throw new ParseError("OpenHands tool arguments must be a JSON object.", JSON.stringify(parsed));
+  }
+
+  private readToolCallArguments(candidate: unknown): Record<string, unknown> | null {
+    if (candidate == null) {
+      return null;
+    }
+    if (typeof candidate === "string") {
+      try {
+        const parsed = JSON.parse(candidate) as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          return { ...(parsed as Record<string, unknown>) };
+        }
+      } catch {
+        throw new ParseError("OpenHands tool_call arguments must be valid JSON.", String(candidate));
+      }
+      throw new ParseError("OpenHands tool_call arguments must decode to a JSON object.", String(candidate));
+    }
+    if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+      return { ...(candidate as Record<string, unknown>) };
+    }
+    throw new ParseError("OpenHands tool_call arguments must be a JSON object.", JSON.stringify(candidate));
   }
 }

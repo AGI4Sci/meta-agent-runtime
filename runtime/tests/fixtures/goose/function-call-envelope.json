@@ -1,0 +1,6 @@
+{
+  "function": {
+    "name": "edit",
+    "arguments": "{\"path\":\"src/main.ts\",\"before\":\"old\",\"after\":\"new\"}"
+  }
+}

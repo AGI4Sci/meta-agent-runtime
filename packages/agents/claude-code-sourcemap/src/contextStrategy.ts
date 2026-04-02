@@ -1,31 +1,31 @@
 import type { ContextStrategy } from "../../../../runtime/src/core/interfaces";
-import type { Context, ContextEntry } from "../../../../runtime/src/core/types";
+import type { Context } from "../../../../runtime/src/core/types";
+import { CLAUDE_CODE_SOURCEMAP_DEFAULT_MAX_ENTRIES } from "./constants";
 
 export class ClaudeCodeSourcemapContextStrategy implements ContextStrategy {
-  constructor(private readonly maxEntries = 12) {}
+  constructor(private readonly maxEntries = CLAUDE_CODE_SOURCEMAP_DEFAULT_MAX_ENTRIES) {}
 
   trim(context: Context): Context {
-    if (context.entries.length <= this.maxEntries) {
-      return context;
+    const entries = [...context.entries];
+    if (entries.length <= this.maxEntries) {
+      return {
+        ...context,
+        entries,
+      };
     }
 
-    const errors = context.entries.filter(
-      (entry: ContextEntry) =>
-        entry.role === "tool" &&
-        typeof entry.metadata.error === "string" &&
-        entry.metadata.error.length > 0,
-    );
-    const tail = context.entries.slice(-this.maxEntries);
-    const deduped = new Map<string, ContextEntry>();
-
-    for (const entry of [...errors, ...tail]) {
-      const key = `${entry.role}:${entry.content}:${String(entry.metadata.error ?? "")}`;
-      deduped.set(key, entry);
+    let start = Math.max(0, entries.length - this.maxEntries);
+    if (
+      start > 0 &&
+      entries[start]?.role === "tool" &&
+      entries[start - 1]?.role === "assistant"
+    ) {
+      start -= 1;
     }
 
     return {
       ...context,
-      entries: Array.from(deduped.values()),
+      entries: entries.slice(start),
     };
   }
 }

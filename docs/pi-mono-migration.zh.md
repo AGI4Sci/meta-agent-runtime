@@ -71,6 +71,8 @@
 
 未迁移 skills / context files / extension prompt append 等复杂拼装路径。
 
+补充说明：在首次接入后，本 adapter 又做了一轮“忠实性纠偏”。当前报告以下文都以纠偏后的状态为准，而不是第一次最小接线时的状态。
+
 #### Action 解析
 
 源仓库的真正执行路径依赖模型原生 tool call / assistant content 流，而不是 reference runtime 当前的单字符串 action parser 方案。也就是说，源实现的 action 解析边界和 meta-agent-runtime 当前协议并不完全一致。
@@ -80,6 +82,7 @@
 - 要求模型输出单个 JSON action 对象
 - 支持 fenced JSON
 - 兼容 runtime 共享工具与 `pi-mono` 风格工具名之间的别名映射
+- 兼容 source-style tool envelope，例如 `toolCall` / `arguments` 结构
 
 这是为了先让 `pi-mono` 能在共享 runtime 上跑通最小闭环。
 
@@ -101,7 +104,8 @@
 因此实现了一个轻量 `PiMonoContextStrategy`：
 
 - 优先保留被显式 `pinned` 的 entry
-- 其余部分按 assistant/tool 成对回溯截断
+- 其余部分优先按 assistant/tool 成对回溯截断
+- 对非成对的 trailing entry 也能稳定保留，不再假设所有上下文都严格二元成对
 - 避免只保留半轮记录
 
 这能比简单滑窗更贴近 `pi-mono` 的“以 turn 为单位”语义，但仍然保持实现简单。
@@ -121,19 +125,12 @@
 - `find`
 - `ls`
 
-共享 runtime 当前已有工具命名并不完全一致，主要是：
-
-- `file_read`
-- `file_edit`
-- `file_write`
-- `bash`
-- `search`
-
-因此本轮采用映射方案，而不是重新实现一套工具：
+共享 runtime 当前已有工具命名并不完全一致，因此本轮采用“优先映射、必要时最小补齐”的方案，而不是重新实现整套工具：
 
 - 用 alias 方式把 `file_read/file_edit/file_write` 暴露为 `read/edit/write`
 - 保留共享 `bash`
-- 提供一个最小只读 preset：`read + search`
+- 为了维持源仓库只读探索面的结构，补齐了最小 `grep/find/ls` 工具 compat 实现
+- `piMonoReadonlyTools` 现已恢复为 `read + grep + find + ls`
 
 #### 主 loop 边界
 
@@ -176,10 +173,11 @@ reference runtime 当前 loop 更简化：
 - 维持英文 prompt
 - 保留 `pi-mono` 风格的“expert coding assistant operating inside pi”语气
 - 基于 tools 动态渲染工具列表
-- 基于 tool set 生成基础 guidelines
-- 注入当前日期时间
+- 基于 tool set 生成更接近源仓库 `system-prompt.ts` 的基础 guidelines
+- 注入当前日期时间与 working directory
 - 渲染当前任务与上下文历史
 - 强制输出单个 JSON action contract
+- 为实验可复现性提供可注入的 `cwd` / `now()` 选项
 
 这是对原 `system-prompt.ts` 的最小兼容抽取，而不是完整功能移植。
 
@@ -189,6 +187,7 @@ reference runtime 当前 loop 更简化：
 
 - 接受纯 JSON 或 fenced JSON
 - 解析 `{ name, args }` 结构
+- 兼容 `toolCall` / `arguments` / `tool_input` 等 source-style envelope
 - 对 `file_read/file_edit/file_write` 做别名归一化
 - 解析错误时抛出 runtime 标准 `ParseError`
 
@@ -199,9 +198,10 @@ reference runtime 当前 loop 更简化：
 新增 `PiMonoContextStrategy`，实现要点：
 
 - 支持 token budget 参数
-- 按 assistant/tool 两条 entry 为一个 pair 回溯保留
+- 优先按 assistant/tool 两条 entry 为一个 pair 回溯保留
 - 优先保留 metadata 中被 `pinned` 的 entry
 - 避免截断到半轮对话
+- 对 trailing user entry 等非 pair 记录保持更稳健
 
 这是面向最小实验可比性的实现，不包含 compaction summary / branch summary / custom message transform。
 
@@ -215,9 +215,9 @@ reference runtime 当前 loop 更简化：
 其中：
 
 - `piMonoCodingTools = [read, bash, edit, write]`
-- `piMonoReadonlyTools = [read, search]`
+- `piMonoReadonlyTools = [read, grep, find, ls]`
 
-这些工具并未重新实现，而是映射到共享 runtime 已有工具上。
+其中 `read/edit/write/bash` 优先复用共享 runtime 工具；`grep/find/ls` 为维持源仓库研究边界而补了最小 compat 实现。
 
 ### 4.6 Registry 接入
 
@@ -240,16 +240,19 @@ reference runtime 当前 loop 更简化：
 
 这是为了让 runtime 可以编译跨目录 adapter 源码。
 
-## 5. 本轮已迁移能力
+## 5. 当前已迁移能力
 
-本轮已经迁移或兼容的能力包括：
+当前已经迁移或兼容的能力包括：
 
 - `pi-mono` 风格英文 prompt 基线
 - 最小工具列表动态渲染
-- 最小 guideline 生成
+- 更接近源 prompt 的工具感知 guideline 生成
 - JSON action 兼容解析
+- source-style tool envelope 兼容解析
 - 与共享 runtime 工具命名之间的别名映射
-- 以 turn pair 为中心的轻量 context trimming
+- 以 turn pair 为中心、且对 trailing entry 更稳健的 context trimming
+- 更接近源仓库的 readonly tool surface：`read/grep/find/ls`
+- prompt builder 的可控时间 / cwd 注入，便于可复现实验
 - runtime registry 中的最小接入
 - 针对 adapter 的最小测试覆盖
 
@@ -259,88 +262,67 @@ reference runtime 当前 loop 更简化：
 
 ### 6.1 原生 tool-call 流式协议
 
-源仓库使用的是模型原生 tool call / streaming event 模式；当前兼容层改为单 JSON action 输出，因此并不等价。
+源仓库依赖原生 streaming tool call / assistant content 事件流。当前 adapter 仍运行在 shared runtime 的单 action loop 上，没有复刻这条协议。
 
-后续如果要更高保真迁移，需要：
+### 6.2 `AgentSession` 级状态管理
 
-- 扩展 runtime 的 action 协议
-- 或提供适配原生 tool-call transcript 的 parser / bridge
+以下复杂能力仍未迁：
 
-### 6.2 自定义 message 体系
-
-源仓库中存在多种 `AgentMessage` 扩展类型，例如：
-
-- `bashExecution`
-- `custom`
-- `branchSummary`
-- `compactionSummary`
-
-这些尚未映射到 runtime 当前 `ContextEntry` 模型。
-
-### 6.3 Compaction / branch summary
-
-源仓库的重要上下文管理特性尚未迁入：
-
-- conversation compaction
+- compaction summary
 - branch summary
-- overflow recovery
-- summary generation
+- steering / follow-up queue
+- retry / overflow recovery
+- extension runner / skill / resource loader
+- UI-only message filtering 与 session persistence
 
-这部分后续可考虑继续抽成更强的 `ContextStrategy` 或独立兼容层。
+### 6.3 source prompt 的文档 / skills / extension 拼装
 
-### 6.4 Session / extension / skill / resource loader
+当前 prompt builder 只保留最稳定的系统提示骨架，没有迁：
 
-以下高层能力尚未迁移：
+- docs path 注入
+- context files 拼接
+- skills section
+- extension append prompt
 
-- `AgentSession`
-- extension runtime
-- skill loading / formatting
-- resource loader
-- prompt template expansion
-- model/session management
+## 7. 当前判断
 
-这些超出了“最小可运行骨架”的范围。
+从“方便模块化研究”的角度看，当前 `pi-mono` adapter 已经比首次接入时更适合作为受控研究对象：
 
-### 6.5 完整探索工具集
+- prompt 变量更接近 source algorithm
+- tool 变量的探索面更接近 source preset
+- context 变量更稳健，减少了实现偶然性
+- 但 session / UI / streaming 机制仍被明确排除在共享 core 之外
 
-目前只提供：
+因此，当前状态应理解为：
 
-- coding preset: `read/bash/edit/write`
-- readonly preset: `read/search`
-
-源仓库中的 `grep/find/ls` 风格探索工具尚未对齐为独立 `pi-mono` preset。
-
-### 6.6 与原系统 prompt 的深度对齐
-
-当前 prompt 只是保留语气、结构和关键约束，并未完整移植：
-
-- 文档路径提醒
-- pi 自身文档阅读策略
-- skills/context files/appendSystemPrompt
-- extension 注入的 prompt 片段
+- 不是 `pi-mono` 全量移植
+- 但已经是一个更忠实、更适合做 PromptBuilder / ActionParser / ContextStrategy / ToolSpec 对比实验的最小骨架
 
 ## 7. 验证情况
 
 本次实际执行了以下验证：
 
-1. 在 `runtime/` 下执行 `npm install`
-2. 执行 `npm run build`
-3. 执行 `npm test`
+1. 在 `runtime/` 下执行 `npm test`
+2. 针对 `pi-mono` adapter 持续补充定向测试
+3. 结合源码审计结果回查 prompt / parser / readonly preset / context trimming 的忠实性
 
 验证结果：
 
-- `build` 通过
 - `test` 通过
-- 总计 10 个测试全部通过
-- 新增的 `pi-mono` adapter 测试也通过
+- 当前仓库测试为 `79/79` 通过
+- `pi-mono` 相关测试覆盖了最小骨架与最近一轮忠实性纠偏
+- 另外，`npm run build` 在仓库当前状态下仍会被其他 adapter 的既有 TypeScript 问题影响，因此不能单独作为 `pi-mono` 迁移成败的结论依据
 
 新增测试主要覆盖：
 
 - adapter name 导出
 - parser 对 fenced JSON 的解析
+- source-style tool envelope 兼容
 - tool alias normalization
-- prompt builder 输出中包含 task / tools / JSON contract
+- prompt builder 输出中包含 task / tools / JSON contract / working directory
+- readonly exploration guidance 的存在
 - context strategy 保持 assistant/tool 配对
+- context strategy 对 trailing non-pair entry 的稳定保留
 - tool preset 的名称集合正确
 
 ## 8. 风险与偏差说明
@@ -356,22 +338,26 @@ reference runtime 当前 loop 更简化：
 
 当前 parser 假设模型返回单 JSON action，对比源仓库真实协议有明显收缩。这对 apples-to-apples 研究是一个潜在偏差来源，后续需要明确标注实验配置。
 
-### 8.3 readonly preset 仍较弱
+### 8.3 仍未覆盖 session / streaming 行为
 
-当前 `pi_mono_readonly` 只有 `read + search`，还不足以完整覆盖源仓库的探索工作流。
+虽然 `pi_mono_readonly` 已恢复到 `read + grep + find + ls`，但原仓库的重要 session / streaming 机制仍未迁入。这意味着当前 adapter 更适合做模块化研究，不适合作为 source 行为的全量代理。
 
 ## 9. 后续建议
 
 建议按以下顺序继续推进：
 
-1. 为 `pi-mono` 增加更完整的 exploration preset，对齐 `grep/find/ls`
-2. 在 adapter 内增加 context message compatibility 层，吸收 compaction / summary message
-3. 评估是否需要为 runtime 增加原生 tool-call action 协议，以提高与 `pi-mono` 的行为一致性
-4. 增加 fixture 驱动测试，比较原仓库 prompt / parser / tool naming 与迁移适配器输出
-5. 如果后续需要更强保真迁移，再考虑 session / extension / skill 体系的分阶段接入
+1. 在 adapter 内增加更明确的 fixture 驱动测试，比较 source prompt / parser / readonly preset 与当前适配器输出
+2. 评估是否需要增加 context message compatibility 层，以吸收 compaction / summary message
+3. 评估是否需要为 runtime 增加更接近原生 tool-call transcript 的协议桥接
+4. 如果后续研究问题确实依赖 session 行为，再分阶段引入 `AgentSession` 级兼容层
+5. 保持当前“prompt/context/parser/tool 可单独替换”的边界，不要为了高保真而回退到 source 的整包运行时
 
 ## 10. 当前结论
 
-本轮迁移可以认为“最小骨架已完成，完整兼容尚未完成”。
+当前 `pi-mono` 迁移状态可以概括为：
 
-已完成的部分足以让 `pi-mono` 以独立 adapter 的形式接入共享 runtime，并为后续消融实验提供一个可构建、可测试、可继续扩展的基础版本。
+- 最小骨架已完成
+- 忠实性已做一轮关键纠偏
+- 完整 session / streaming 兼容仍未完成
+
+已完成的部分已经足以让 `pi-mono` 以独立 adapter 的形式接入共享 runtime，并作为 PromptBuilder / ActionParser / ContextStrategy / ToolSpec 的受控研究对象继续演化。

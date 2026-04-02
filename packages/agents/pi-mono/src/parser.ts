@@ -32,8 +32,8 @@ export class PiMonoActionParser implements ActionParser {
       throw new ParseError("Action payload must be a JSON object.", rawText);
     }
 
-    const candidate = payload as { name?: unknown; args?: unknown };
-    if (typeof candidate.name !== "string" || candidate.name.trim().length === 0) {
+    const candidate = extractCandidate(payload);
+    if (!candidate || typeof candidate.name !== "string" || candidate.name.trim().length === 0) {
       throw new ParseError("Action payload must contain a non-empty string 'name'.", rawText);
     }
 
@@ -49,4 +49,40 @@ export class PiMonoActionParser implements ActionParser {
       rawText,
     };
   }
+}
+
+function extractCandidate(payload: unknown): { name?: unknown; args?: unknown } | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const record = payload as Record<string, unknown>;
+
+  if (Array.isArray(record.content)) {
+    const toolCall = record.content.find(
+      (entry) =>
+        entry &&
+        typeof entry === "object" &&
+        (entry as Record<string, unknown>).type === "toolCall",
+    ) as Record<string, unknown> | undefined;
+
+    if (toolCall) {
+      return {
+        name: toolCall.name,
+        args: toolCall.arguments,
+      };
+    }
+  }
+
+  if (record.type === "toolCall") {
+    return {
+      name: record.name,
+      args: record.arguments,
+    };
+  }
+
+  return {
+    name: record.name ?? record.tool ?? record.tool_name,
+    args: record.args ?? record.arguments ?? record.input ?? record.tool_input,
+  };
 }

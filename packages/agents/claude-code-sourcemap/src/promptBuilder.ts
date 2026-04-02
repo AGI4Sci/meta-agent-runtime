@@ -1,6 +1,10 @@
 import type { PromptBuilder } from "../../../../runtime/src/core/interfaces";
 import type { Context, ContextEntry } from "../../../../runtime/src/core/types";
 import type { ToolSpec } from "../../../../runtime/src/core/toolSpec";
+import {
+  CLAUDE_CODE_SOURCEMAP_FINISH_EXAMPLE,
+  CLAUDE_CODE_SOURCEMAP_FUNCTION_CALL_EXAMPLE,
+} from "./constants";
 
 function renderFunctions(tools: ToolSpec[]): string {
   return tools
@@ -56,18 +60,10 @@ export class ClaudeCodeSourcemapPromptBuilder implements PromptBuilder {
       "",
       "# Response Format",
       "To call a function, respond with exactly:",
-      "<function_calls>",
-      '<invoke name="FUNCTION_NAME">',
-      '{"arg":"value"}',
-      "</invoke>",
-      "</function_calls>",
+      CLAUDE_CODE_SOURCEMAP_FUNCTION_CALL_EXAMPLE,
       "",
       "When the task is complete, call:",
-      "<function_calls>",
-      '<invoke name="finish">',
-      '{"result":"final answer"}',
-      "</invoke>",
-      "</function_calls>",
+      CLAUDE_CODE_SOURCEMAP_FINISH_EXAMPLE,
       "",
       "# Conversation History",
       renderHistory(context),

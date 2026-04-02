@@ -1,43 +1,18 @@
 import type { PromptBuilder } from "../../../../runtime/src/core/interfaces";
 import type { Context } from "../../../../runtime/src/core/types";
 import type { ToolSpec } from "../../../../runtime/src/core/toolSpec";
+import { getClinePromptToolSpec } from "./toolPromptSpec";
 
 function renderTool(tool: ToolSpec): string {
-  const schema = tool.argsSchema as {
-    properties?: Record<string, { type?: unknown }>;
-    required?: unknown;
-  };
-  const required = new Set(
-    Array.isArray(schema.required) ? schema.required.map(String) : [],
-  );
-  const properties = schema.properties ?? {};
-  const params =
-    Object.keys(properties).length === 0
-      ? "Parameters: None"
-      : [
-          "Parameters:",
-          ...Object.entries(properties).map(
-            ([name, config]) =>
-              `- ${name}: (${required.has(name) ? "required" : "optional"}) ${String(
-                config.type ?? "string",
-              )}`,
-          ),
-        ].join("\n");
-  const usage =
-    tool.name === "finish"
-      ? [
-          "<attempt_completion>",
-          "<result>Final result here</result>",
-          "<command>Optional demo command</command>",
-          "</attempt_completion>",
-        ].join("\n")
-      : [
-          `<${tool.name}>`,
-          ...Object.keys(properties).map((name) => `<${name}>...</${name}>`),
-          `</${tool.name}>`,
-        ].join("\n");
-
-  return [`## ${tool.name}`, `Description: ${tool.description}`, params, "Usage:", usage].join("\n");
+  const rendered = getClinePromptToolSpec(tool);
+  return [
+    `## ${rendered.name}`,
+    `Description: ${rendered.description}`,
+    "Parameters:",
+    ...rendered.parameters,
+    "Usage:",
+    ...rendered.usage,
+  ].join("\n");
 }
 
 function renderHistory(context: Context): string {
@@ -69,14 +44,17 @@ export class ClinePromptBuilder implements PromptBuilder {
     return [
       "You are Cline running inside a shared research runtime.",
       "You are a coding agent. Work step by step, use exactly one XML-style tool block per assistant turn, and wait for the tool result before the next action.",
-      "Prefer the smallest tool needed for the current step.",
-      "When the task is fully complete, respond with <attempt_completion>...</attempt_completion>.",
+      "ALWAYS wait for the tool result before deciding the next step. Never assume a tool succeeded without seeing its result.",
+      "For targeted edits, prefer replace_in_file with carefully crafted SEARCH/REPLACE blocks. When several changes are needed in the same file, prefer a single replace_in_file call with multiple blocks in file order.",
+      "The write_to_file and replace_in_file tool responses will include the final state of the file. Use that final_file_content as the reference point for any subsequent edits.",
+      "When the task is fully complete and verified, respond with <attempt_completion>...</attempt_completion>.",
       "",
       "# Tool Use Formatting",
       "Use XML-style tags for tool calls.",
       "<tool_name>",
       "<parameter_name>value</parameter_name>",
       "</tool_name>",
+      "Use exactly one tool block per message.",
       "",
       "# Tools",
       renderedTools,

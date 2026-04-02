@@ -4,14 +4,14 @@
 
 This document records the current migration status of `claude-code-sourcemap` into the shared `meta-agent-runtime` framework.
 
-It focuses on the smallest runnable adapter we implemented in this iteration, rather than a full behavioral reproduction of the source repository.
+It now reflects the state after both the initial minimal adapter landing and a follow-up fidelity / research-boundary correction pass, rather than only the first integration snapshot.
 
 ## 2. Scope
 
 ### 2.1 Target repository
 
-- Target repository: `/Applications/workspace/ailab/research/code-agent/meta-agent-runtime-claude-code-sourcemap`
-- Working branch: `codex/migrate-claude-code-sourcemap`
+- Current target repository: `/Applications/workspace/ailab/research/code-agent/meta_agent_runtime`
+- Working branch: use the current local branch state
 
 ### 2.2 Source repository
 
@@ -96,6 +96,8 @@ New directory:
 
 New files:
 
+- `packages/agents/claude-code-sourcemap/src/constants.ts`
+- `packages/agents/claude-code-sourcemap/src/adapter.ts`
 - `packages/agents/claude-code-sourcemap/src/promptBuilder.ts`
 - `packages/agents/claude-code-sourcemap/src/actionParser.ts`
 - `packages/agents/claude-code-sourcemap/src/contextStrategy.ts`
@@ -136,6 +138,7 @@ What it does:
 - renders tools in a Claude Code-like `<functions>` block
 - defines a `<function_calls><invoke ...>` response convention
 - explicitly instructs the model to use `finish` to end the task
+- centralizes adapter-facing response-format constants and tool naming in `constants.ts`
 
 What it does not do yet:
 
@@ -156,6 +159,9 @@ Supported formats:
 - fallback formats:
   - `<tool_call name="...">{...}</tool_call>`
   - `{"name":"...","args":{...}}`
+- source-like JSON compatibility:
+  - `{"type":"tool_use","name":"...","input":{...}}`
+  - `{"tool":"...","arguments":{...}}`
 
 Current limits:
 
@@ -173,7 +179,8 @@ Implemented in:
 What it does:
 
 - keeps the latest 12 context entries by default
-- prioritizes retaining tool error observations
+- preserves chronological order instead of reshuffling around errors
+- avoids trimming in the middle of an `assistant -> tool` pair when possible
 - stays fully compatible with the existing shared runtime loop
 
 What it does not do yet:
@@ -196,35 +203,61 @@ Mapped tools:
 - `Edit`
 - `Grep`
 
-Mapping to shared runtime tools:
-
-- `Bash` -> runtime `bash`
-- `Read` -> runtime `file_read`
-- `Write` -> runtime `file_write`
-- `Edit` -> runtime `file_edit`
-- `Grep` -> runtime `search`
-
 What was adapted:
 
 - source-like tool names
 - source-like English descriptions
 - source-like argument schema shapes
-- argument remapping before dispatch
+- adapter-local wrappers for the minimum file and shell behaviors needed by the agent
 
-Examples:
+Recovered source-leaning behaviors:
 
-- `Read.file_path` -> `file_read.path`
-- `Write.file_path` -> `file_write.path`
-- `Edit.old_string/new_string` -> `file_edit.old_text/new_text`
-- `Grep.pattern` -> `search.query`
+- `Read`
+  - supports `file_path + offset + limit`
+  - returns numbered lines
+- `Edit`
+  - supports `replace_all`
+  - rejects ambiguous single replacements when `old_string` appears multiple times
+- `Grep`
+  - supports `glob / type / output_mode / multiline`
+- `Bash`
+  - remains available as a minimal shell escape hatch, while steering prompt usage toward dedicated tools
 
 Current limits:
 
-- `Grep` is only a minimal alias over the shared runtime search tool
-- `Edit` still uses the shared runtime's simple substring replacement semantics
+- this is still a compatibility tool layer, not a full source-tool ecosystem port
 - no source-style permission checks, read-before-write protection, mtime verification, or richer validation pipeline yet
+- `Glob`, notebook, MCP, subagent, and other broader tools are still not migrated
+## 6.5 Adapter definition and research boundary cleanup
 
-## 6.5 Runtime registration
+Implemented in:
+
+- `packages/agents/claude-code-sourcemap/src/constants.ts`
+- `packages/agents/claude-code-sourcemap/src/adapter.ts`
+- `packages/agents/claude-code-sourcemap/src/index.ts`
+
+What it adds:
+
+- stable exported adapter constants:
+  - adapter name
+  - default context window
+  - function-call example
+  - finish example
+  - tool-name set
+- a single `createClaudeCodeSourcemapAdapter(...)` assembly point for:
+  - prompt builder
+  - action parser
+  - context strategy
+  - tool preset
+- explicit research knobs for `maxContextEntries` and custom `tools`
+
+Why this matters:
+
+- research code no longer needs to import multiple factories separately
+- the adapter baseline is now more explicit and easier to compare across ablations
+- the shared runtime core still stays untouched
+
+## 6.6 Runtime registration
 
 Integrated through:
 
@@ -273,26 +306,29 @@ New test file:
 Covered cases:
 
 - parsing the `<function_calls>` envelope
+- parsing source-like `tool_use` JSON payloads
 - rendering the prompt with `<functions>` and the XML-style contract
 - exposing source-like tool names and argument schema
+- assembling the adapter with explicit context-window and custom-tool overrides
 
 ## 8.2 Commands run
 
 Executed inside `runtime/`:
 
-- `npm install`
-- `npm run build`
-- `npm test`
+- `node --import tsx --test tests/claudeCodeSourcemap.test.ts`
 
 ## 8.3 Results
 
-- `npm run build`: passed
-- `npm test`: passed
-- total tests: 8
-- passed: 8
+- targeted `claude-code-sourcemap` adapter tests: passed
+- total tests: 5
+- passed: 5
 - failed: 0
 
-The new `claude-code-sourcemap` adapter tests were included in that passing run.
+Important note:
+
+- full-repository `npm run build` can still be blocked by unrelated adapter issues
+- in the most recent check, the blocking error came from a duplicate export in `packages/agents/openhands/src/index.ts`
+- that means adapter-local validation and whole-repo TypeScript build status should be tracked separately
 
 ## 9. Explicit TODOs and remaining gaps
 
@@ -391,13 +427,15 @@ The current adapter covers:
 
 - Claude Code-like English prompt construction
 - source-like function-call parsing
-- a minimal context trimming strategy
-- source-like tool naming over shared runtime tools
+- a chronology-preserving context trimming strategy that avoids splitting assistant/tool pairs when possible
+- adapter-local tools that are closer to source parameter and behavior expectations
+- an explicit adapter definition layer for modular research and ablation
 - runtime schema and registry integration
 
 Status summary:
 
 - `MVP adapter: completed`
+- `research-ready adapter boundary: completed`
 - `high-fidelity compatibility: not completed yet`
 
 ## 12. Recommended next steps
@@ -414,6 +452,8 @@ Recommended order:
 
 Added:
 
+- `packages/agents/claude-code-sourcemap/src/constants.ts`
+- `packages/agents/claude-code-sourcemap/src/adapter.ts`
 - `packages/agents/claude-code-sourcemap/src/promptBuilder.ts`
 - `packages/agents/claude-code-sourcemap/src/actionParser.ts`
 - `packages/agents/claude-code-sourcemap/src/contextStrategy.ts`

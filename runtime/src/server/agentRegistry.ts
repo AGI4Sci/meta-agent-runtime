@@ -22,7 +22,7 @@ import {
   IIAgentActionParser,
   IIAgentContextStrategy,
   IIAgentPromptBuilder,
-  iiAgentToolPreset,
+  createIIAgentToolPreset,
 } from "../../../packages/agents/ii-agent/src";
 import {
   createOpenCodeActionParser,
@@ -93,7 +93,7 @@ export const AGENT_REGISTRATIONS: AgentRegistration[] = [
     agent: "goose",
     promptBuilders: [{ name: "goose", create: () => createGoosePromptBuilder() }],
     actionParsers: [{ name: "goose", create: () => createGooseActionParser() }],
-    contextStrategies: [{ name: "goose", create: () => createGooseContextStrategy() }],
+    contextStrategies: [{ name: "goose", create: ({ maxTokens = 8000 }) => createGooseContextStrategy(maxTokens) }],
     toolPresets: [{ name: "goose", create: () => GOOSE_TOOL_PRESET }],
   },
   {
@@ -103,7 +103,7 @@ export const AGENT_REGISTRATIONS: AgentRegistration[] = [
     contextStrategies: [
       { name: "ii_agent", create: ({ maxTokens = 8000 }) => new IIAgentContextStrategy(maxTokens) },
     ],
-    toolPresets: [{ name: "ii_agent", create: () => iiAgentToolPreset }],
+    toolPresets: [{ name: "ii_agent", create: () => createIIAgentToolPreset() }],
   },
   {
     agent: "pi-mono",

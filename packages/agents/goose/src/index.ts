@@ -14,8 +14,8 @@ export function createGooseActionParser(): ActionParser {
   return new GooseActionParser();
 }
 
-export function createGooseContextStrategy(): ContextStrategy {
-  return new GooseContextStrategy();
+export function createGooseContextStrategy(maxTokens: number = 8000): ContextStrategy {
+  return new GooseContextStrategy(maxTokens);
 }
 
 export { GOOSE_TOOL_PRESET };

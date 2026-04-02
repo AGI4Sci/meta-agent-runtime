@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { access, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { ToolSpec } from "../../../../runtime/src/core/toolSpec";
@@ -7,6 +8,9 @@ import { safeInterpreter, safeObservation } from "../../../../runtime/src/core/t
 import { stringTool } from "../../../../runtime/src/tools/common";
 
 const execFileAsync = promisify(execFile);
+const SHELL_OUTPUT_LIMIT_LINES = 2000;
+const SHELL_OUTPUT_LIMIT_BYTES = 50_000;
+const SHELL_OUTPUT_PREVIEW_LINES = 50;
 
 type TreeNode = {
   dirs: Map<string, TreeNode>;
@@ -70,7 +74,7 @@ async function listTrackedFiles(rootDir: string): Promise<string[] | null> {
 }
 
 function normalizeDepth(value: unknown): number | null {
-  if (value === undefined) {
+  if (value === undefined || value === null) {
     return 2;
   }
   const parsed = Number(value);
@@ -81,6 +85,46 @@ function normalizeDepth(value: unknown): number | null {
     return null;
   }
   return Math.floor(parsed);
+}
+
+function countLinesLikeGoose(content: string): number {
+  if (content.length === 0) {
+    return 0;
+  }
+  return content.split(/\r?\n/).filter((_, index, lines) => !(index === lines.length - 1 && lines[index] === "")).length;
+}
+
+async function truncateShellStream(label: string, value: string): Promise<string> {
+  const normalized = value.replace(/\r\n/g, "\n");
+  const lines = normalized.split("\n");
+  const overLineLimit = lines.length > SHELL_OUTPUT_LIMIT_LINES;
+  const overByteLimit = Buffer.byteLength(normalized, "utf8") > SHELL_OUTPUT_LIMIT_BYTES;
+
+  if (!overLineLimit && !overByteLimit) {
+    return normalized.trim();
+  }
+
+  const preview = lines.slice(0, SHELL_OUTPUT_PREVIEW_LINES).join("\n").trim();
+  const tempPath = path.join(
+    os.tmpdir(),
+    `goose-${label}-${Date.now()}-${Math.random().toString(36).slice(2)}.log`,
+  );
+  await writeFile(tempPath, normalized, "utf8");
+
+  const reasons: string[] = [];
+  if (overLineLimit) {
+    reasons.push(`${lines.length} lines`);
+  }
+  if (overByteLimit) {
+    reasons.push(`${Buffer.byteLength(normalized, "utf8")} bytes`);
+  }
+
+  const sections = [
+    preview && `Preview:\n${preview}`,
+    `Full ${label} was truncated (${reasons.join(", ")}) and saved to ${tempPath}`,
+  ].filter(Boolean);
+
+  return sections.join("\n\n");
 }
 
 async function countFileLines(filePath: string): Promise<number> {
@@ -171,42 +215,60 @@ function shellInterpreter(raw: unknown) {
     return safeObservation(String(raw ?? ""));
   }
 
-  const result = raw as { stdout?: unknown; stderr?: unknown; exitCode?: unknown };
+  const result = raw as { stdout?: unknown; stderr?: unknown; exitCode?: unknown; timedOut?: unknown };
   const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
   const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
   const exitCode =
     typeof result.exitCode === "number" ? result.exitCode : Number(result.exitCode ?? 0);
+  const timedOut = Boolean(result.timedOut);
 
-  const content = [`exit_code: ${exitCode}`, stdout && `stdout:\n${stdout}`, stderr && `stderr:\n${stderr}`]
+  const content = [
+    timedOut ? "timed_out: true" : `exit_code: ${exitCode}`,
+    stdout && `stdout:\n${stdout}`,
+    stderr && `stderr:\n${stderr}`,
+  ]
     .filter(Boolean)
     .join("\n\n");
 
-  return safeObservation(content, exitCode === 0 ? null : `shell exited with code ${exitCode}`, {
+  return safeObservation(content, timedOut ? "shell timed out" : exitCode === 0 ? null : `shell exited with code ${exitCode}`, {
     exitCode,
     stdout,
     stderr,
+    timedOut,
   });
 }
 
 export const gooseShellTool: ToolSpec = {
   name: "shell",
   description:
-    "Execute a shell command in the user's default shell in the current dir. Returns stdout, stderr, and exit code.",
+    "Execute a shell command in the user's default shell in the current dir. Returns stdout and stderr as separate fields. The output of each stream is limited to up to 2000 lines, and longer outputs will be saved to a temporary file.",
   argsSchema: {
     type: "object",
     properties: {
       command: { type: "string" },
-      cwd: { type: "string" },
+      timeout_secs: { type: "number" },
     },
     required: ["command"],
   },
   call: async (args) => {
-    const cwd = typeof args.cwd === "string" ? args.cwd : process.cwd();
     const command = String(args.command ?? "");
+    const timeoutSecs =
+      typeof args.timeout_secs === "number" && Number.isFinite(args.timeout_secs) && args.timeout_secs > 0
+        ? Math.floor(args.timeout_secs)
+        : undefined;
 
     try {
-      const { stdout, stderr } = await execFileAsync("/bin/zsh", ["-lc", command], { cwd });
-      return { stdout, stderr, exitCode: 0 };
+      const { stdout, stderr } = await execFileAsync("/bin/zsh", ["-lc", command], {
+        cwd: process.cwd(),
+        timeout: timeoutSecs ? timeoutSecs * 1000 : undefined,
+        maxBuffer: SHELL_OUTPUT_LIMIT_BYTES * 4,
+      });
+      return {
+        stdout: await truncateShellStream("stdout", stdout),
+        stderr: await truncateShellStream("stderr", stderr),
+        exitCode: 0,
+        timedOut: false,
+      };
     } catch (error) {
       if (error && typeof error === "object") {
         const commandError = error as {
@@ -214,14 +276,22 @@ export const gooseShellTool: ToolSpec = {
           stderr?: string;
           code?: number | string;
           message?: string;
+          killed?: boolean;
         };
+        const timedOut = Boolean(commandError.killed && timeoutSecs);
         return {
-          stdout: commandError.stdout ?? "",
-          stderr: commandError.stderr ?? commandError.message ?? "",
+          stdout: await truncateShellStream("stdout", commandError.stdout ?? ""),
+          stderr: await truncateShellStream("stderr", commandError.stderr ?? commandError.message ?? ""),
           exitCode: Number(commandError.code ?? 1),
+          timedOut,
         };
       }
-      return { stdout: "", stderr: String(error), exitCode: 1 };
+      return {
+        stdout: "",
+        stderr: await truncateShellStream("stderr", String(error)),
+        exitCode: 1,
+        timedOut: false,
+      };
     }
   },
   interpreter: safeInterpreter(shellInterpreter),
@@ -240,9 +310,12 @@ export const gooseWriteTool = stringTool(
   },
   async (args) => {
     const targetPath = String(args.path);
+    const content = String(args.content);
     await mkdir(path.dirname(targetPath), { recursive: true });
-    await writeFile(targetPath, String(args.content), "utf8");
-    return `Wrote ${targetPath}`;
+    const isNew = !(await stat(targetPath).then(() => true).catch(() => false));
+    await writeFile(targetPath, content, "utf8");
+    const lineCount = countLinesLikeGoose(content);
+    return `${isNew ? "Created" : "Wrote"} ${targetPath} (${lineCount} lines)`;
   },
 );
 
@@ -253,27 +326,29 @@ export const gooseEditTool = stringTool(
     type: "object",
     properties: {
       path: { type: "string" },
-      old_text: { type: "string" },
-      new_text: { type: "string" },
+      before: { type: "string" },
+      after: { type: "string" },
     },
-    required: ["path", "old_text", "new_text"],
+    required: ["path", "before", "after"],
   },
   async (args) => {
     const targetPath = String(args.path);
-    const oldText = String(args.old_text);
-    const newText = String(args.new_text);
+    const oldText = String(args.before);
+    const newText = String(args.after);
     const source = await readFile(targetPath, "utf8");
 
     if (!source.includes(oldText)) {
-      throw new Error("old_text not found in file");
+      throw new Error("before text not found in file");
     }
     if (source.indexOf(oldText) !== source.lastIndexOf(oldText)) {
-      throw new Error("old_text must match uniquely");
+      throw new Error("before text must match uniquely");
     }
 
     const next = source.replace(oldText, newText);
     await writeFile(targetPath, next, "utf8");
-    return `Edited ${targetPath}`;
+    const oldLines = countLinesLikeGoose(oldText);
+    const newLines = countLinesLikeGoose(newText);
+    return `Edited ${targetPath} (${oldLines} lines -> ${newLines} lines)`;
   },
 );
 
@@ -286,9 +361,10 @@ export const gooseTreeTool = stringTool(
       path: { type: "string" },
       depth: { type: "number" },
     },
+    required: ["path"],
   },
   async (args) => {
-    const rootDir = typeof args.path === "string" ? path.resolve(args.path) : process.cwd();
+    const rootDir = path.resolve(String(args.path));
     return renderGooseStyleTree(rootDir, normalizeDepth(args.depth));
   },
 );

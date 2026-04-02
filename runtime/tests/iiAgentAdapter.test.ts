@@ -6,41 +6,50 @@ import {
   IIAgentActionParser,
   IIAgentContextStrategy,
   IIAgentPromptBuilder,
-  iiAgentToolPreset,
+  createIIAgentToolPreset,
+  findLatestTodoSnapshot,
 } from "../../packages/agents/ii-agent/src";
 
 test("ii-agent parser accepts native-style tool envelopes", () => {
   const parser = new IIAgentActionParser();
-  const action = parser.parse('{"tool_name":"ShellRunCommand","tool_input":{"command":"pwd"}}');
-  assert.equal(action.name, "ShellRunCommand");
+  const action = parser.parse('{"tool_name":"Bash","tool_input":{"command":"pwd"}}');
+  assert.equal(action.name, "Bash");
   assert.deepEqual(action.args, { command: "pwd" });
 });
 
 test("ii-agent parser extracts fenced json", () => {
   const parser = new IIAgentActionParser();
-  const action = parser.parse('```json\n{"name":"FileRead","args":{"path":"README.md"}}\n```');
-  assert.equal(action.name, "FileRead");
-  assert.deepEqual(action.args, { path: "README.md" });
+  const action = parser.parse('```json\n{"name":"Read","args":{"file_path":"README.md"}}\n```');
+  assert.equal(action.name, "Read");
+  assert.deepEqual(action.args, { file_path: "README.md" });
+});
+
+test("ii-agent parser maps plain text completion to finish", () => {
+  const parser = new IIAgentActionParser();
+  const action = parser.parse("Task completed successfully.");
+  assert.equal(action.name, "finish");
+  assert.deepEqual(action.args, { result: "Task completed successfully." });
 });
 
 test("ii-agent prompt builder renders task, tools, and history", () => {
   const builder = new IIAgentPromptBuilder();
-  const prompt = builder.build("Inspect the repository", iiAgentToolPreset, {
+  const prompt = builder.build("Inspect the repository", createIIAgentToolPreset(), {
     task: "Inspect the repository",
     entries: [{ role: "tool", content: "README.md contents", metadata: {} }],
     step: 1,
     tokenCount: 10,
   });
   assert.match(prompt, /You are II Agent/);
-  assert.match(prompt, /ShellRunCommand/);
+  assert.match(prompt, /TodoWrite/);
   assert.match(prompt, /README\.md contents/);
 });
 
-test("ii-agent context strategy keeps the newest history within budget", () => {
-  const strategy = new IIAgentContextStrategy(8);
+test("ii-agent context strategy keeps todo state while trimming recent history", () => {
+  const strategy = new IIAgentContextStrategy(20);
   const trimmed = strategy.trim({
     task: "task",
     entries: [
+      { role: "tool", content: "Todo list updated:\n- [pending|high] 1. Inspect project", metadata: {} },
       { role: "assistant", content: "older content that should drop", metadata: {} },
       { role: "tool", content: "recent", metadata: {} },
     ],
@@ -48,8 +57,18 @@ test("ii-agent context strategy keeps the newest history within budget", () => {
     tokenCount: 999,
   });
 
-  assert.equal(trimmed.entries.length, 1);
-  assert.equal(trimmed.entries[0]?.content, "recent");
+  assert.equal(trimmed.entries.length, 2);
+  assert.match(trimmed.entries[0]?.content ?? "", /Todo list updated:/);
+  assert.equal(trimmed.entries[1]?.content, "recent");
+});
+
+test("ii-agent todo snapshot detection is shared across modules", () => {
+  const entries = [
+    { role: "tool" as const, content: "other tool output", metadata: {} },
+    { role: "tool" as const, content: "Current todo list:\n- [pending|medium] 1. Check tests", metadata: {} },
+  ];
+
+  assert.equal(findLatestTodoSnapshot(entries)?.content, entries[1]?.content);
 });
 
 test("ii-agent preset runs a minimal tool loop", async () => {
@@ -59,9 +78,9 @@ test("ii-agent preset runs a minimal tool loop", async () => {
     complete(): string {
       this.calls += 1;
       if (this.calls === 1) {
-        return '{"tool_name":"ShellRunCommand","tool_input":{"command":"printf hello"}}';
+        return '{"tool_name":"Bash","tool_input":{"command":"printf hello"}}';
       }
-      return '{"name":"finish","args":{"result":"done"}}';
+      return "done";
     }
 
     countTokens(text: string): number {
@@ -71,7 +90,7 @@ test("ii-agent preset runs a minimal tool loop", async () => {
 
   const runtime = new AgentRuntime({
     llm: new ScriptedLLM(),
-    tools: iiAgentToolPreset,
+    tools: createIIAgentToolPreset(),
     promptBuilder: new IIAgentPromptBuilder(),
     actionParser: new IIAgentActionParser(),
     contextStrategy: new IIAgentContextStrategy(),
@@ -81,6 +100,15 @@ test("ii-agent preset runs a minimal tool loop", async () => {
   const result = await runtime.run("say hello");
   assert.equal(result.success, true);
   assert.equal(result.steps.length, 1);
-  assert.equal(result.steps[0]?.action.name, "ShellRunCommand");
+  assert.equal(result.steps[0]?.action.name, "Bash");
   assert.equal(result.steps[0]?.observation.content, "hello");
+  assert.equal(result.result, "done");
+});
+
+test("ii-agent preset exposes source-faithful tool names and todo tools", () => {
+  const tools = createIIAgentToolPreset();
+  assert.deepEqual(
+    tools.map((tool) => tool.name),
+    ["Bash", "Read", "Write", "Edit", "Grep", "TodoWrite", "TodoRead"],
+  );
 });
