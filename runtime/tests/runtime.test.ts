@@ -6,7 +6,6 @@ import type {
   ContextStrategy,
   LLMClient,
   PromptBuilder,
-  PromptBuildOptions,
 } from "../src/core/interfaces";
 import type { Context } from "../src/core/types";
 import type { ToolSpec } from "../src/core/toolSpec";
@@ -27,8 +26,8 @@ class StubLLM implements LLMClient {
 }
 
 class StubPromptBuilder implements PromptBuilder {
-  build(task: string, _tools: ToolSpec[], _context: Context, options: PromptBuildOptions): string {
-    return `${options.language}:${task}`;
+  build(task: string, _tools: ToolSpec[], _context: Context): string {
+    return task;
   }
 }
 
@@ -54,38 +53,18 @@ test("runtime returns finish result", async () => {
   assert.equal(result.result, "done");
 });
 
-test("runtime forwards prompt language to prompt builder", async () => {
-  const runtime = new AgentRuntime({
-    llm: new StubLLM(),
-    tools: [],
-    promptBuilder: new StubPromptBuilder(),
-    actionParser: new StubActionParser(),
-    contextStrategy: new NoopContextStrategy() as ContextStrategy,
-    promptOptions: { language: "en" },
-  });
-
-  const result = await runtime.run("test task");
-  assert.equal(result.success, true);
-  assert.equal(result.totalTokenIn > 0, true);
-});
-
-test("minimal prompt localizes tool descriptions", () => {
+test("minimal prompt renders english tool descriptions", () => {
   const promptBuilder = new MinimalPromptBuilder();
   const tool: ToolSpec = {
     name: "demo_tool",
-    description: {
-      zh: "中文工具说明",
-      en: "English tool description",
-    },
+    description: "English tool description",
     argsSchema: { type: "object", properties: {} },
     call: () => "",
     interpreter: () => ({ content: "", error: null, metadata: {} }),
   };
   const context = { task: "t", entries: [], step: 0, tokenCount: 0 };
 
-  const zhPrompt = promptBuilder.build("task", [tool], context, { language: "zh" });
-  const enPrompt = promptBuilder.build("task", [tool], context, { language: "en" });
+  const prompt = promptBuilder.build("task", [tool], context);
 
-  assert.match(zhPrompt, /中文工具说明/);
-  assert.match(enPrompt, /English tool description/);
+  assert.match(prompt, /English tool description/);
 });

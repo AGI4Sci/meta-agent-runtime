@@ -6,10 +6,7 @@ const execFileAsync = promisify(execFile);
 
 export const searchTool = stringTool(
   "search",
-  {
-    zh: "使用 ripgrep 搜索文件内容。",
-    en: "Search files with ripgrep.",
-  },
+  "Search files with ripgrep.",
   {
     type: "object",
     properties: {

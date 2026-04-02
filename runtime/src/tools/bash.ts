@@ -6,10 +6,7 @@ const execFileAsync = promisify(execFile);
 
 export const bashTool = stringTool(
   "bash",
-  {
-    zh: "在当前工作目录执行 shell 命令，并返回 stdout/stderr。",
-    en: "Execute a shell command in the current workspace and return stdout/stderr.",
-  },
+  "Execute a shell command in the current workspace and return stdout/stderr.",
   {
     type: "object",
     properties: {

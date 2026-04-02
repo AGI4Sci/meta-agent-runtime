@@ -11,6 +11,7 @@
 - New documents should preferably be split into separate Chinese and English files instead of mixing both languages in a single page.
 - If the Chinese and English versions diverge, internal discussion should resolve the Chinese version first and then sync the English copy.
 - Code identifiers, interface names, and directory names stay in English.
+- Runtime prompts, tool descriptions, and experiment-facing interfaces stay in English to reduce drift in high-frequency execution paths.
 
 ## 1. Research Background and Goals
 
@@ -53,7 +54,7 @@ Maximize task success rate under the following constraints:
 | Error handling | Convert errors into observations and continue |
 | Argument validation | Runtime validates args before tool invocation |
 | Prompt template | Pluggable |
-| Prompt language | Configurable, switchable between Chinese and English |
+| Prompt language | Fixed to English inside the runtime; Chinese is kept in docs and collaboration layers |
 | LLM | Injected dependency with a minimal runtime interface |
 
 ### 2.2 In Scope vs Out of Scope
@@ -66,7 +67,7 @@ In scope:
 - Error-to-observation fallback
 - Context maintenance and trimming
 - Termination checks
-- Prompt language switching
+- English prompt assembly
 
 Out of scope:
 
@@ -151,8 +152,8 @@ class RunResult:
 
 ### 4.2 `PromptBuilder`
 
-The prompt builder must be a pure function and must support `options.language in {"zh", "en"}`.
-Tool descriptions should also be rendered according to the selected language instead of remaining hard-coded in one language.
+The prompt builder must be a pure function.
+Runtime prompts and tool descriptions should remain in English.
 
 ### 4.3 `ActionParser`
 
@@ -164,15 +165,6 @@ Tool descriptions should also be rendered according to the selected language ins
 
 ### 5.1 Initialization Contract
 
-```python
-@dataclass
-class PromptBuildOptions:
-    language: Literal["zh", "en"] = "zh"
-```
-
-### 5.2 Public Interface
-
-```python
 class AgentRuntime:
     def run(self, task: str) -> RunResult:
         ...
@@ -215,16 +207,16 @@ meta-agent-runtime/
 8. `StepRecord` must not affect control flow.
 9. Observer failures must not break the loop.
 10. `metadata` must not enter prompts.
-11. Prompts must support Chinese/English switching.
+11. Runtime prompts and tool descriptions must stay in English.
 
 ## 10. HTTP Server Specification
 
 - Default port: `3282`
-- `POST /run` supports `prompt_language: "zh" | "en"`
+- `POST /run` does not expose runtime prompt-language switching
 - `GET /health`
 - `GET /registry`
 
 ## 11. Python Client Specification
 
-- The Python request type should mirror `prompt_language`
-- Experiment scripts may switch prompt language per task or per user preference
+- The Python client does not expose runtime prompt-language switching
+- If users provide tasks in Chinese, translation or rewriting may happen outside the runtime, while runtime templates remain in English

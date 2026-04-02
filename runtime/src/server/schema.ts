@@ -8,7 +8,6 @@ export const RunRequestSchema = z.object({
     api_key: z.string().optional(),
     base_url: z.string().optional(),
   }),
-  prompt_language: z.enum(["zh", "en"]).default("zh"),
   prompt_builder: z.enum(["react", "cot", "minimal", "smolagents", "swe_agent"]).default("react"),
   action_parser: z.enum(["json", "xml", "function_call", "react"]).default("json"),
   context_strategy: z

@@ -1,27 +1,11 @@
 import type { Observation } from "./types";
-import type { PromptLanguage } from "./interfaces";
-
-export interface LocalizedText {
-  zh: string;
-  en: string;
-}
 
 export interface ToolSpec {
   name: string;
-  description: string | LocalizedText;
+  description: string;
   argsSchema: Record<string, unknown>;
   call: (args: Record<string, unknown>) => Promise<unknown> | unknown;
   interpreter: (raw: unknown) => Observation;
-}
-
-export function localizeText(
-  value: string | LocalizedText,
-  language: PromptLanguage,
-): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  return value[language];
 }
 
 export function safeObservation(
@@ -54,10 +38,7 @@ export function safeInterpreter(
 
 export const FINISH_TOOL: ToolSpec = {
   name: "finish",
-  description: {
-    zh: "当任务完成时调用该工具，并通过 result 传入最终结果。",
-    en: "Call this when the task is complete. Pass the final result as 'result'.",
-  },
+  description: "Call this when the task is complete. Pass the final result as 'result'.",
   argsSchema: {
     type: "object",
     properties: {

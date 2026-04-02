@@ -8,7 +8,6 @@ def main() -> None:
             RunRequest(
                 task="Echo a completion result.",
                 llm=LLMConfig(provider="local", model="demo"),
-                prompt_language="zh",
                 tools="minimal",
             )
         )

@@ -32,7 +32,7 @@
 - 支持不同 code agent 的并行、模块化迁移
 - 通过 registry 驱动 prompt/context/parser/tool 的自由组合
 - 为实验提供可观测性、回放与分析入口
-- 支持中英双语 prompt 配置，并按用户需求切换语言
+- 采用“文档双语、runtime 英文”的分层方案，降低实验路径的维护复杂度
 
 ## 快速开始
 
@@ -55,8 +55,8 @@ python -m agent_runtime_client.demo
 
 - 已完成参考框架骨架，包括核心 runtime、server、Python client 与迁移目录。
 - LLM provider 仍是可扩展 scaffold，后续可按实验需要接入真实实现。
-- HTTP `POST /run` 已预留 `prompt_language` 字段，用于选择中文或英文 prompt。
-- tool `description` 已支持中英双语资源，prompt 会按语言配置渲染工具说明。
+- runtime prompt、tool description 与实验接口统一使用英文，保证高频路径稳定。
+- 中文主要保留在文档与协作层。
 
 ## 迁移原则
 

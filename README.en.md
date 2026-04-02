@@ -32,7 +32,7 @@ A reference platform for code-agent ablation studies and runtime research.
 - Parallel and modular migration paths for different code agents
 - Registry-driven composition for prompt, context, parser, and tool variants
 - Experiment-friendly observability, replay, and analysis hooks
-- Bilingual prompt support with language switching based on user needs
+- A layered model: bilingual documentation, English-only runtime prompts
 
 ## Quick Start
 
@@ -55,8 +55,8 @@ python -m agent_runtime_client.demo
 
 - The repository includes the reference runtime skeleton, server, Python client, and adapter-oriented migration layout.
 - LLM providers are still scaffolds and can be wired to real implementations later.
-- HTTP `POST /run` now reserves a `prompt_language` field for selecting Chinese or English prompts.
-- Tool `description` now supports localized Chinese/English resources and is rendered according to the selected prompt language.
+- Runtime prompts, tool descriptions, and experiment-facing interfaces are standardized in English for stability.
+- Chinese is retained primarily in documentation and collaboration workflows.
 
 ## Migration Principles
 

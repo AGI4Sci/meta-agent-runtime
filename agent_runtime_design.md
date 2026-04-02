@@ -11,6 +11,7 @@
 - 新文档优先拆分为独立中文、英文文件，不在同一页做双语混排。
 - 若中英文版本存在冲突，以中文版本为团队内部讨论基准。
 - 代码标识、接口名、目录名保持英文。
+- runtime 内部的 prompt、tool description、实验接口统一采用英文，减少高频路径的维护风险。
 
 ## 1. 研究背景与目标
 
@@ -53,7 +54,7 @@
 | 错误处理 | 错误转化为 Observation，不中断 loop，不做重试 |
 | args 验证 | runtime 在调用 tool 前做 schema 验证 |
 | prompt 模板 | 可插拔，作为 runtime 初始化参数 |
-| prompt 语言 | 可配置，按用户需求在中文和英文之间切换 |
+| prompt 语言 | runtime 固定英文；中文主要用于文档与协作层 |
 | LLM | 外部依赖注入，runtime 定义最小接口 |
 
 ### 2.2 边界内 vs 边界外
@@ -67,7 +68,7 @@
 - 错误兜底：异常转错误 `Observation`
 - context 维护与裁剪
 - 终止判断
-- prompt 语言切换
+- 英文 prompt 组装
 
 边界外：
 
@@ -187,7 +188,7 @@ class LLMClient(Protocol):
 
 ```python
 class PromptBuilder(Protocol):
-    def build(self, task: str, tools: list[ToolSpec], context: Context, options: PromptBuildOptions) -> str:
+    def build(self, task: str, tools: list[ToolSpec], context: Context) -> str:
         ...
 ```
 
@@ -197,8 +198,8 @@ class PromptBuilder(Protocol):
 - 必须包含 tools 信息
 - 必须包含 context 历史
 - 必须是纯函数
-- 必须支持 `options.language in {"zh", "en"}`
-- tools 的描述文本应支持按语言渲染，而不是在 prompt 中硬编码单语说明
+- runtime 内部统一输出英文 prompt
+- tools 的描述文本在 runtime 中统一使用英文
 
 ### 4.3 `ActionParser`
 
@@ -240,14 +241,6 @@ class RuntimeConfig:
     budget_token: int | None = None
     budget_time_ms: int | None = None
 
-@dataclass
-class PromptBuildOptions:
-    language: Literal["zh", "en"] = "zh"
-```
-
-### 5.2 公开接口
-
-```python
 class AgentRuntime:
     def run(self, task: str) -> RunResult:
         ...
@@ -290,16 +283,16 @@ meta-agent-runtime/
 8. `StepRecord` 不参与控制流。
 9. `Observer` 不得破坏主 loop。
 10. `metadata` 不进入 prompt。
-11. prompt 必须支持中英双语切换。
+11. runtime prompt 与 tool description 统一使用英文。
 
 ## 10. HTTP Server 规范（TypeScript 侧）
 
 - 默认端口 `3282`
-- `POST /run` 支持 `prompt_language: "zh" | "en"`
+- `POST /run` 不暴露 prompt 语言切换，统一使用英文 runtime prompt
 - `GET /health`
 - `GET /registry`
 
 ## 11. Python Client 规范
 
-- Python client 的请求类型应镜像 `prompt_language`
-- 实验脚本可按任务或用户偏好切换 prompt 语言
+- Python client 不暴露 prompt 语言切换
+- 若用户以中文给出任务，业务层可做翻译或转写，但 runtime 模板保持英文

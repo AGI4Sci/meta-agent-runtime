@@ -3,10 +3,7 @@ import { stringTool } from "./common";
 
 export const fileEditTool = stringTool(
   "file_edit",
-  {
-    zh: "在 UTF-8 文本文件中替换一个子串。",
-    en: "Replace one substring in a UTF-8 text file.",
-  },
+  "Replace one substring in a UTF-8 text file.",
   {
     type: "object",
     properties: {
