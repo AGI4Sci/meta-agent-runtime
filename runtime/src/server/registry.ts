@@ -1,5 +1,11 @@
 import type { ActionParser, ContextStrategy, LLMClient, PromptBuilder } from "../core/interfaces";
 import type { ToolSpec } from "../core/toolSpec";
+import {
+  createClineActionParser,
+  createClineContextStrategy,
+  createClinePromptBuilder,
+  getClineToolPreset,
+} from "../../../packages/agents/cline/src";
 import { SelectiveRetentionStrategy } from "../context/selective";
 import { SlidingWindowStrategy } from "../context/slidingWindow";
 import { SummarizationStrategy } from "../context/summarization";
@@ -28,6 +34,7 @@ export const PROMPT_BUILDERS: Record<string, () => PromptBuilder> = {
   minimal: () => new MinimalPromptBuilder(),
   smolagents: () => new SmolagentsPromptBuilder(),
   swe_agent: () => new SWEAgentPromptBuilder(),
+  cline: () => createClinePromptBuilder(),
 };
 
 export const ACTION_PARSERS: Record<string, () => ActionParser> = {
@@ -35,6 +42,7 @@ export const ACTION_PARSERS: Record<string, () => ActionParser> = {
   xml: () => new XMLActionParser(),
   function_call: () => new FunctionCallActionParser(),
   react: () => new ReActActionParser(),
+  cline: () => createClineActionParser(),
 };
 
 export const CONTEXT_STRATEGIES: Record<
@@ -45,11 +53,14 @@ export const CONTEXT_STRATEGIES: Record<
   sliding_window: ({ max_tokens = 8000 }) => new SlidingWindowStrategy(max_tokens),
   summarization: ({ max_tokens = 8000, llm }) => new SummarizationStrategy(max_tokens, llm!),
   selective: () => new SelectiveRetentionStrategy(),
+  cline: ({ max_tokens = 8000, llm }) =>
+    createClineContextStrategy({ max_tokens, llm }),
 };
 
 export const TOOL_PRESETS: Record<string, ToolSpec[]> = {
   swe: [bashTool, fileReadTool, fileWriteTool, fileEditTool, searchTool],
   minimal: [bashTool],
+  cline_minimal: getClineToolPreset(),
 };
 
 export function createLLM(input: {
@@ -66,4 +77,3 @@ export function createLLM(input: {
   }
   return new LocalLLMClient(input.model, input.baseUrl);
 }
-
