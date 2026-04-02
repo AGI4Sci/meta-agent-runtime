@@ -38,6 +38,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       promptBuilder,
       actionParser,
       contextStrategy,
+      promptOptions: {
+        language: payload.prompt_language,
+      },
       config: {
         maxSteps: payload.config.max_steps,
         maxTokens: payload.config.max_tokens,
@@ -69,4 +72,3 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     return reply.send(response);
   });
 }
-

@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { AgentRuntime } from "../src/core/runtime";
-import type { ActionParser, ContextStrategy, LLMClient, PromptBuilder } from "../src/core/interfaces";
+import type {
+  ActionParser,
+  ContextStrategy,
+  LLMClient,
+  PromptBuilder,
+  PromptBuildOptions,
+} from "../src/core/interfaces";
 import type { Context } from "../src/core/types";
 import type { ToolSpec } from "../src/core/toolSpec";
 import { NoopContextStrategy } from "../src/context/noop";
@@ -20,8 +26,8 @@ class StubLLM implements LLMClient {
 }
 
 class StubPromptBuilder implements PromptBuilder {
-  build(task: string, _tools: ToolSpec[], _context: Context): string {
-    return task;
+  build(task: string, _tools: ToolSpec[], _context: Context, options: PromptBuildOptions): string {
+    return `${options.language}:${task}`;
   }
 }
 
@@ -45,4 +51,19 @@ test("runtime returns finish result", async () => {
   assert.equal(result.success, true);
   assert.equal(result.terminationReason, "finish");
   assert.equal(result.result, "done");
+});
+
+test("runtime forwards prompt language to prompt builder", async () => {
+  const runtime = new AgentRuntime({
+    llm: new StubLLM(),
+    tools: [],
+    promptBuilder: new StubPromptBuilder(),
+    actionParser: new StubActionParser(),
+    contextStrategy: new NoopContextStrategy() as ContextStrategy,
+    promptOptions: { language: "en" },
+  });
+
+  const result = await runtime.run("test task");
+  assert.equal(result.success, true);
+  assert.equal(result.totalTokenIn > 0, true);
 });

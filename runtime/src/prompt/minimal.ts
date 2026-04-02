@@ -1,11 +1,15 @@
-import type { PromptBuilder } from "../core/interfaces";
+import type { PromptBuildOptions, PromptBuilder } from "../core/interfaces";
 import type { Context } from "../core/types";
 import type { ToolSpec } from "../core/toolSpec";
-import { renderContext, renderTools } from "./helpers";
+import { label, renderContext, renderTools } from "./helpers";
 
 export class MinimalPromptBuilder implements PromptBuilder {
-  build(task: string, tools: ToolSpec[], context: Context): string {
-    return [`TASK:\n${task}`, `TOOLS:\n${renderTools(tools)}`, `HISTORY:\n${renderContext(context)}`].join("\n\n");
+  build(task: string, tools: ToolSpec[], context: Context, options: PromptBuildOptions): string {
+    const language = options.language;
+    return [
+      `${label(language, { zh: "任务", en: "TASK" })}:\n${task}`,
+      `${label(language, { zh: "工具", en: "TOOLS" })}:\n${renderTools(tools)}`,
+      `${label(language, { zh: "历史", en: "HISTORY" })}:\n${renderContext(context)}`,
+    ].join("\n\n");
   }
 }
-

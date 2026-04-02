@@ -1,5 +1,6 @@
 import type { Context } from "../core/types";
 import type { ToolSpec } from "../core/toolSpec";
+import type { PromptLanguage } from "../core/interfaces";
 
 export function renderTools(tools: ToolSpec[]): string {
   return tools
@@ -20,3 +21,6 @@ export function renderContext(context: Context): string {
     .join("\n");
 }
 
+export function label(language: PromptLanguage, values: { zh: string; en: string }): string {
+  return language === "zh" ? values.zh : values.en;
+}

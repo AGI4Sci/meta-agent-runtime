@@ -28,6 +28,7 @@ class RuntimeConfig:
 class RunRequest:
     task: str
     llm: LLMConfig
+    prompt_language: Literal["zh", "en"] = "zh"
     prompt_builder: Literal["react", "cot", "minimal", "smolagents", "swe_agent"] = "react"
     action_parser: Literal["json", "xml", "function_call", "react"] = "json"
     context_strategy: ContextStrategyConfig = field(default_factory=ContextStrategyConfig)
@@ -65,4 +66,3 @@ class RunResponse:
         copied = dict(data)
         steps = [StepSummary(**item) for item in copied.pop("steps", [])]
         return cls(steps=steps, **copied)
-

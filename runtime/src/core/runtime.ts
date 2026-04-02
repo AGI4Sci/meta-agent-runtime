@@ -1,5 +1,12 @@
 import { ParseError } from "./errors";
-import type { ActionParser, ContextStrategy, LLMClient, Observer, PromptBuilder } from "./interfaces";
+import type {
+  ActionParser,
+  ContextStrategy,
+  LLMClient,
+  Observer,
+  PromptBuilder,
+  PromptBuildOptions,
+} from "./interfaces";
 import { FINISH_TOOL, type ToolSpec, safeObservation, safeInterpreter } from "./toolSpec";
 import {
   DEFAULT_RUNTIME_CONFIG,
@@ -21,6 +28,7 @@ export interface AgentRuntimeOptions {
   contextStrategy: ContextStrategy;
   config?: Partial<RuntimeConfig>;
   observers?: Observer[];
+  promptOptions?: PromptBuildOptions;
 }
 
 export class AgentRuntime {
@@ -31,6 +39,7 @@ export class AgentRuntime {
   private readonly contextStrategy: ContextStrategy;
   private readonly config: RuntimeConfig;
   private readonly observers: Observer[];
+  private readonly promptOptions: PromptBuildOptions;
 
   constructor(options: AgentRuntimeOptions) {
     this.llm = options.llm;
@@ -39,6 +48,7 @@ export class AgentRuntime {
     this.contextStrategy = options.contextStrategy;
     this.config = { ...DEFAULT_RUNTIME_CONFIG, ...options.config };
     this.observers = options.observers ?? [];
+    this.promptOptions = options.promptOptions ?? { language: "zh" };
     this.tools = this.normalizeTools(options.tools);
   }
 
@@ -52,7 +62,7 @@ export class AgentRuntime {
 
     try {
       while (true) {
-        const prompt = this.promptBuilder.build(task, this.tools, currentContext);
+        const prompt = this.promptBuilder.build(task, this.tools, currentContext, this.promptOptions);
         const startedAt = Date.now();
         let rawText: string;
 
